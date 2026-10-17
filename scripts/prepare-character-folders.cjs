@@ -1,5 +1,10 @@
 const fs=require('node:fs');const path=require('node:path');
 const version=require('../package.json').version;
+const appRoot=path.join(__dirname,'..','dist','v'+version,'KairosDesktop-win32-x64');
+const archive=path.join(appRoot,'resources','app.asar');
+const packed=new Set(require('@electron/asar').listPackage(archive).map(name=>name.replace(/\\/g,'/').replace(/^\//,'')));
+function verify(folder){for(const entry of fs.readdirSync(path.join(__dirname,'..',folder),{withFileTypes:true})){const name=folder+'/'+entry.name;if(entry.isDirectory())verify(name);else if(!packed.has(name))throw Error('Packaged application is missing '+name);}}
+verify('app');
 const root=path.join(__dirname,'..','dist','v'+version,'KairosDesktop-win32-x64','character');
 fs.mkdirSync(root,{recursive:true});
 for(let index=1;index<=4;index++)fs.mkdirSync(path.join(root,'slot-'+index,'assets'),{recursive:true});

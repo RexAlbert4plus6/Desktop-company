@@ -9,7 +9,7 @@
     "test": "node --test test/*.test.cjs",
     "postpackage": "node scripts/prepare-character-folders.cjs",
     "source": "node scripts/prepare-public-source.cjs",
-    "package": "electron-packager . KairosDesktop --platform=win32 --arch=x64 --out=dist/v0.5.0 --overwrite --ignore=^/dist --ignore=^/test --ignore=^/private --ignore=^/character --ignore=^/release --ignore=^/runtime-data --ignore=^/.git --ignore=lnk$"
+    "package": "electron-packager . KairosDesktop --platform=win32 --arch=x64 --out=dist/v0.5.0 --overwrite --ignore=^/dist --ignore=^/test --ignore=^/private --ignore=^/character$ --ignore=^/release --ignore=^/runtime-data --ignore=^/.git --ignore=lnk$"
   },
   "devDependencies": {
     "@electron/packager": "^20.3.0",

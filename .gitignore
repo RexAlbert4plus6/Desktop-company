@@ -1,0 +1,9 @@
+node_modules/
+dist/
+private/
+runtime-data/
+*.log
+.env*
+*.lnk
+character/
+release/

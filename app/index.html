@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file:; style-src 'self'; script-src 'self'; connect-src 'none'"><title>Kairos · 聊一会儿</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><div class="identity"><span class="mint">✦</span><div><strong>Kairos Asher</strong><small>一些闲话，一点薄荷。</small></div></div><button id="settings-toggle" aria-label="设置">设置</button></header>
+<main id="conversation"><div id="messages" aria-live="polite"></div><div id="status" role="status"></div><form id="composer"><textarea id="input" placeholder="说点什么，Creator…" maxlength="10000" rows="2" aria-label="消息"></textarea><div class="compose-footer"><small>Enter 发送 · Shift + Enter 换行</small><button id="cancel" type="button" hidden>停止</button><button id="send">发送 ↗</button></div></form></main>
+<section id="settings" hidden><div class="section-title"><h2>让他认识你，也连接世界</h2><p>信息保存在这台电脑。聊天时，角色设定、关于你、长期记忆和近期对话会发送给所选服务商。</p></div>
+<form id="settings-form">
+<section id="characters"><h2>角色槽位</h2><p class="hint">图片、人设、聊天与记忆各自保存。世界书、用户信息和 API 设置共享。点击槽位切换，当前修改会先保存。</p><div id="character-slots" class="slot-grid"></div><label>当前角色名字<input id="characterName" maxlength="80"></label><details><summary>当前角色图片 · 拖放 PNG 或点击选择</summary><p class="hint">Normal 必填，其他可选；Blink 是闭眼，半闭眼可不填。所有图保持相同画布与位置。</p><div id="character-images" class="image-grid"></div></details><div class="actions"><button type="button" id="character-folder">打开 character 文件夹</button><button type="button" id="import-character">导入素材包</button><button type="button" id="export-character">导出素材包</button></div></section>
+<label>聊天服务商<select id="provider"><option value="deepseek">DeepSeek 官方</option><option value="openrouter">OpenRouter</option></select></label>
+<label>API 地址<input id="base" readonly></label>
+<label>API 密钥<input id="apiKey" type="password" autocomplete="off" placeholder="粘贴密钥，只在本机加密保存"></label><small id="key-note"></small>
+<details><summary>第一次用？密钥在哪里找</summary><p>DeepSeek：登录 platform.deepseek.com，在 API keys 页面创建密钥并复制到上方。OpenRouter：登录 openrouter.ai，在 Keys 页面创建密钥。不要把密钥发到聊天或上传 GitHub。余额页面的地址不是密钥。</p></details>
+<label>模型名称<input id="model" required placeholder="DeepSeek 已预填；OpenRouter 填模型 ID"></label>
+<div class="actions"><button type="submit">保存设置</button><button type="button" id="test">保存并测试连接</button></div><small>连接测试会向所选服务商发送一次很短的请求，可能产生少量费用。</small>
+<label>关于我 / 相处补充 <span>选填</span><textarea id="about" rows="4" maxlength="50000" placeholder="名字、兴趣、相处习惯……留空也可以，默认称呼 Creator。"></textarea></label>
+<label>世界书 <span>背景 / 文风 / 剧情，选填</span><textarea id="worldbook" rows="6" maxlength="50000" placeholder="以后可以在这里补充世界观、剧情和文风。当前为纯文本世界书，每次对话全部读取；桌面回复保持纯台词。"></textarea></label>
+<label>长期记忆 <span>可自动总结，也可手动修改</span><textarea id="memory" rows="5" maxlength="50000" placeholder="点击下方一键总结，自动提炼并保存对话中的重要信息。"></textarea></label><button type="button" id="summarize">保存修改并一键总结记忆</button><p class="hint">总结会使用当前 API 额度，按批回顾尚未总结的新对话，并合并已有记忆。每次总结前自动保留旧记忆备份。完整聊天一直留在本地。</p>
+<details><summary>固定文字问候 · 已填入你的台词</summary><p>点击人物时按电脑本地时间选择时段，并从该组随机显示一条。其他时间从 Random 组随机选。每行一条，不调用 API；目前不会在无人点击时自动弹出。</p><label>Morning · 05:00–08:00<textarea id="greeting-morning" rows="4"></textarea></label><label>Midday · 11:30–13:00<textarea id="greeting-midday" rows="4"></textarea></label><label>Night · 22:00–00:00<textarea id="greeting-night" rows="4"></textarea></label><label>Random · 其他时间<textarea id="greeting-random" rows="10"></textarea></label><p>修改后点“保存全部修改”。所有问候仅显示文字。</p></details>
+<details><summary>角色设定 · 可编辑</summary><label><textarea id="persona" rows="12" maxlength="50000" required aria-label="角色设定"></textarea></label><p>完整原设会与 Creator 的默认相处背景共同生效。</p></details>
+<label>角色大小<input id="size" type="range" min="160" max="420" step="10"></label>
+<label>问候冷却（分钟，10～20）<input id="greetingCooldownMinutes" type="number" min="10" max="20" value="15"></label>
+<label class="check"><input type="checkbox" id="alwaysOnTop">保持在其他窗口上方</label>
+<div class="actions"><button type="submit">保存全部修改</button><button type="button" id="back">返回聊天</button></div>
+<div class="data-actions"><button type="button" id="export">导出聊天与记忆</button><button type="button" id="data-folder">打开数据文件夹</button><button type="button" id="clear">清空聊天</button></div>
+</form></section><div id="toast" role="status" hidden></div><script src="renderer.js"></script></body></html>

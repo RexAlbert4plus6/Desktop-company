@@ -16,8 +16,15 @@ function readJSON(file, fallback) {
 }
 function writeJSON(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file + '.tmp', JSON.stringify(value, null, 2), 'utf8');
-  fs.renameSync(file + '.tmp', file);
+  const content=JSON.stringify(value,null,2);
+  fs.writeFileSync(file + '.tmp', content, 'utf8');
+  try { fs.renameSync(file + '.tmp', file); }
+  catch (error) {
+    if(error.code!=='EXDEV')throw error;
+    // Some redirected Windows folders reject rename even within one directory.
+    fs.writeFileSync(file,content,'utf8');
+    fs.unlinkSync(file+'.tmp');
+  }
 }
 function buildMessages(config, history, text) {
   const name=config.characterName||'Kairos Asher';

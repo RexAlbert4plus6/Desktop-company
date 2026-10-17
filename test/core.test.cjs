@@ -50,6 +50,20 @@ test('local records survive reading and rewriting; corrupted records are never s
     assert.equal(fs.readFileSync(file, 'utf8'), '{broken');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+test('redirected Windows folders can save records when rename reports EXDEV', () => {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'kairos-redirected-'));
+  const file=path.join(dir,'chat.json'),rename=fs.renameSync;
+  try {
+    fs.writeFileSync(file,JSON.stringify({text:'old'}));
+    fs.renameSync=()=>{throw Object.assign(new Error('redirected folder'),{code:'EXDEV'});};
+    writeJSON(file,{text:'新记录'});
+    assert.deepEqual(readJSON(file,{}),{text:'新记录'});
+    assert.equal(fs.existsSync(file+'.tmp'),false);
+    fs.renameSync=()=>{throw Object.assign(new Error('permission denied'),{code:'EACCES'});};
+    assert.throws(()=>writeJSON(file,{text:'must not overwrite'}),/permission denied/);
+    assert.deepEqual(readJSON(file,{}),{text:'新记录'});
+  } finally {fs.renameSync=rename;fs.rmSync(dir,{recursive:true,force:true});}
+});
 test('API request uses saved model, auth and messages; empty responses fail clearly', async () => {
   let request;
   const answer = await complete({ config, key: 'fake-test-key', messages: [{ role: 'user', content: 'hi' }], fetchImpl: async (url, opts) => { request = {url, opts}; return { ok: true, json: async () => ({ choices: [{ message: { content: 'hello' } }] }) }; } });

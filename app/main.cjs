@@ -7,12 +7,14 @@ const { DEFAULT_GREETINGS, pickGreeting } = require('./greetings.cjs');
 const { EXPRESSIONS, validExpression, parseExpressionReply, ExpressionController } = require('./expressions.cjs');
 const {ACCESSORIES,headpatReaction,greetingAllowed,sample}=require('./interactions.cjs');
 const {ASSET_IDS,validSlot,syncSlot,activate,migrateCharacters,CharacterFiles}=require('./characters.cjs');
+const {CatAddon}=require('./cat-addon.cjs');
 app.setName('Kairos Desktop');
 const root = path.join(__dirname, '..');
 // Keep private runtime data outside the source tree, including in development.
 app.setPath('userData', process.env.KAIROS_DATA_DIR || path.join(app.getPath('appData'), 'KairosDesktop'));
 let pet, chat, subtitle, tray, config, history, active, dragOrigin, dragTimer, testing = false;
 let expressionController, characterFiles, topmostTimer, lastPatFinished=0, patActive=false,patSafetyTimer;
+let cat;
 const SUBTITLE_WIDTH = 380, SUBTITLE_HEIGHT = 300;
 const dataFile = name => path.join(app.getPath('userData'), name);
 function privateFolder() { return app.isPackaged ? path.join(path.dirname(app.getPath('exe')), 'private') : path.join(root, 'private'); }
@@ -23,7 +25,7 @@ function defaults() {
 function publicState() {
   const profile = config.profiles[config.provider] || {};
   const profiles = Object.fromEntries(Object.entries(config.profiles).map(([name, value]) => [name, { model: value.model, hasKey: Boolean(value.key) }]));
-  return { config: { ...config, profiles, characters:undefined }, characterId:config.activeCharacter, slots:config.characters.map((item,index)=>({index,name:item.characterName,ready:Boolean(assetFile(index,'normal')),image:imageURL(assetFile(index,'normal'))})), expression: expressionController.state(), hasKey: Boolean(profile.key), history, busy: Boolean(active || testing), providers: PROVIDERS };
+  return { catAvailable:Boolean(cat?.available&&config.activeCharacter===0),config: { ...config, profiles, characters:undefined }, characterId:config.activeCharacter, slots:config.characters.map((item,index)=>({index,name:item.characterName,ready:Boolean(assetFile(index,'normal')),image:imageURL(assetFile(index,'normal'))})), expression: expressionController.state(), hasKey: Boolean(profile.key), history, busy: Boolean(active || testing), providers: PROVIDERS };
 }
 function assetFile(index,id){
  const custom=characterFiles.asset(index,id);if(custom)return custom;
@@ -57,6 +59,7 @@ function dockSubtitle() {
   subtitle.setBounds({ x: Math.round(Math.max(area.x, Math.min(p.x + (p.width - SUBTITLE_WIDTH) / 2, area.x + area.width - SUBTITLE_WIDTH))), y: p.y + p.height + 4, width: SUBTITLE_WIDTH, height: SUBTITLE_HEIGHT });
 }
 function showSubtitle(greeting = true,focus = true) {
+  cat?.leave();
   const alreadyVisible=subtitle.isVisible();
   pet.showInactive();
   if(focus)subtitle.show();else subtitle.showInactive();
@@ -77,7 +80,7 @@ function getKey() {
 function persistConfig(next){syncSlot(next);writeJSON(dataFile('settings.json'),next);characterFiles.saveCard(next.activeCharacter,next.characters[next.activeCharacter]);config=next;}
 function store() { persistConfig(config); }
 function historyFile(){return characterFiles.historyFile(config.activeCharacter);}
-function maintainTopmost(){for(const win of [pet,subtitle,chat])if(win&&!win.isDestroyed()){
+function maintainTopmost(){for(const win of [pet,subtitle,chat,cat?.window])if(win&&!win.isDestroyed()){
  win.setAlwaysOnTop(config.alwaysOnTop,config.alwaysOnTop?'screen-saver':'normal');
  if(config.alwaysOnTop&&win.isVisible())win.moveTop();
 }}
@@ -90,6 +93,7 @@ function secureWindow(win) {
   win.webContents.on('will-navigate', event => event.preventDefault());
 }
 function showChat(settings = false) {
+  if(cat?.active){cat.leave();pet.showInactive();}
   const area = screen.getDisplayMatching(pet.getBounds()).workArea;
   const p = pet.getBounds();
   chat.setPosition(Math.max(area.x, Math.min(p.x - 455, area.x + area.width - 440)), Math.max(area.y, Math.min(p.y - 150, area.y + area.height - 650)));
@@ -102,31 +106,40 @@ function petMenu() {
     { label: '查看聊天记录', click: () => showChat() },
     { label: '设置 / 关于我 / 记忆', click: () => showChat(true) },
     {label:'角色槽位 / 导入图片',click:()=>showChat(true)},
-    { label: '显示角色', click: () => pet.show() },
-    { label: '暂时隐藏', click: () => { pet.hide(); chat.hide(); subtitle.hide(); } },
+    {label:'猫猫试用（本地 DLC）',enabled:Boolean(cat?.available&&config.activeCharacter===0&&!active&&!testing),click:()=>enterCat()},
+    { label: '显示角色', click: () => {cat?.leave();pet.show();} },
+    { label: '暂时隐藏', click: () => {cat?.leave();pet.hide(); chat.hide(); subtitle.hide(); } },
     { type: 'separator' }, { label: '退出 Kairos', click: () => app.quit() }
   ]).popup();
+}
+function enterCat(){
+ if(active||testing)throw Error('请等当前回复结束再试猫猫。');
+ if(config.activeCharacter!==0)throw Error('这个猫猫 DLC 仅用于 Kairos 槽位。');
+ clearInterval(dragTimer);dragOrigin=null;patActive=false;clearTimeout(patSafetyTimer);expressionController.endTemporary();
+ cat.enter(pet.getBounds());pet.hide();subtitle.hide();chat.hide();
 }
 function createWindows() {
   const area = screen.getPrimaryDisplay().workArea;
   pet = new BrowserWindow(windowOptions({ width: config.size, height: Math.round(config.size * 1.2), x: area.x + area.width - config.size - 60, y: Math.max(area.y, area.y + area.height - Math.round(config.size * 1.2) - SUBTITLE_HEIGHT - 28), frame: false, transparent: true, thickFrame: false, resizable: false, maximizable: false, skipTaskbar: true, alwaysOnTop: config.alwaysOnTop, show: false }));
   subtitle = new BrowserWindow(windowOptions({ width: SUBTITLE_WIDTH, height: SUBTITLE_HEIGHT, frame: false, transparent: true, thickFrame: false, resizable: false, maximizable: false, skipTaskbar: true, alwaysOnTop: config.alwaysOnTop, show: false }));
   chat = new BrowserWindow(windowOptions({ width: 440, height: 650, minWidth: 380, minHeight: 500, title: 'Kairos · 聊一会儿', backgroundColor: '#f5f8fb', show: false, autoHideMenuBar: true, alwaysOnTop: config.alwaysOnTop }));
+  cat=new CatAddon({folder:path.join(app.isPackaged?path.dirname(app.getPath('exe')):root,'dlc','kairos-cat'),options:windowOptions,secure:secureWindow,onReturn:()=>showSubtitle(false),topmost:()=>config.alwaysOnTop});
   secureWindow(pet); secureWindow(chat); secureWindow(subtitle);
   subtitle.loadFile(path.join(__dirname, 'subtitle.html'));
   dockSubtitle();
   for (const win of [pet, subtitle]) { win.webContents.setZoomFactor(1); win.webContents.on('zoom-changed', () => win.webContents.setZoomFactor(1)); }
   pet.loadFile(path.join(__dirname, 'pet.html'));
   chat.loadFile(path.join(__dirname, 'index.html'));
-  pet.once('ready-to-show', () => pet.showInactive());
+  pet.once('ready-to-show', () => {if(process.argv.includes('--cat')&&cat.available&&config.activeCharacter===0)enterCat();else pet.showInactive();});
   chat.on('close', event => { if (!app.isQuitting) { event.preventDefault(); chat.hide(); } });
-  chat.once('ready-to-show', () => { if (!config.profiles[config.provider]?.key && !process.argv.includes('--smoke-test')) showChat(true); });
+  chat.once('ready-to-show', () => { if (!config.profiles[config.provider]?.key && !process.argv.some(arg=>['--smoke-test','--cat-smoke-test','--cat'].includes(arg))) showChat(true); });
   const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'tray.png'));
   tray = new Tray(icon);
   tray.setToolTip('Kairos Desktop · 点击聊天，右键菜单');
   tray.on('click', () => showSubtitle());
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: '显示 Kairos', click: () => pet.show() },
+    { label: '显示 Kairos', click: () => {cat.leave();pet.show();} },
+    {label:'猫猫试用（本地 DLC）',click:()=>{if(cat.available&&config.activeCharacter===0&&!active&&!testing)enterCat();else showChat(true);}},
     { label: '打开桌面字幕', click: () => showSubtitle() },
     { label: '查看聊天记录', click: () => showChat() },
     { label: '设置', click: () => showChat(true) },
@@ -135,6 +148,7 @@ function createWindows() {
   for(const win of [pet,subtitle,chat]){win.on('show',maintainTopmost);win.on('restore',maintainTopmost);}
   maintainTopmost();topmostTimer=setInterval(maintainTopmost,2000);
   if (process.argv.includes('--smoke-test') && process.env.KAIROS_DATA_DIR) runSmokeTest();
+  if(process.argv.includes('--cat-smoke-test')&&process.env.KAIROS_DATA_DIR)runCatSmokeTest();
 }
 async function runSmokeTest() {
   try {
@@ -301,7 +315,42 @@ async function runSmokeTest() {
     app.exit(errors.length ? 1 : 0);
   } catch(error) { writeJSON(dataFile('smoke-result.json'), { error: error.message, stack: error.stack }); app.exit(1); }
 }
+async function runCatSmokeTest(){
+ const errors=[];let calls=0;global.fetch=async()=>{calls++;throw Error('Cat mode must never call API');};
+ try {
+  await Promise.all([pet,chat,subtitle].map(win=>win.webContents.isLoading()?new Promise(resolve=>win.webContents.once('did-finish-load',resolve)):Promise.resolve()));
+  config.memory='猫猫测试：保留记忆';config.worldbook='猫猫测试：保留世界书';history=[{role:'user',content:'保留原来的聊天'}];broadcast();
+  await subtitle.webContents.executeJavaScript(`document.getElementById('input').value='尚未发送的输入'`);
+  const original={history:JSON.stringify(history),memory:config.memory,persona:config.persona,worldbook:config.worldbook,bounds:pet.getBounds(),manual:expressionController.manual};
+  original.portrait=await pet.webContents.executeJavaScript(`({width:document.getElementById('portrait').getBoundingClientRect().width,height:document.getElementById('portrait').getBoundingClientRect().height})`);
+  await subtitle.webContents.executeJavaScript(`document.getElementById('cat-toggle').click()`);
+  const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  for(let count=0;count<40;count++){await wait(100);if(cat.window&&!cat.window.webContents.isLoading()&&await cat.window.webContents.executeJavaScript(`typeof loaded!=='undefined'&&loaded`))break;}
+  const entered={active:cat.active,petHidden:!pet.isVisible(),subtitleHidden:!subtitle.isVisible(),settingsHidden:!chat.isVisible()};
+  if(!Object.values(entered).every(Boolean))errors.push('cat entry did not hide human windows');
+  const drawing=await cat.window.webContents.executeJavaScript(`({loaded,frame:canvas.dataset.frame,images:Object.keys(frames).length,smoothing:context.imageSmoothingEnabled,physicalWidth:canvas.getBoundingClientRect().width*devicePixelRatio,sourceSizes:Object.values(frames).map(f=>[f.image.naturalWidth,f.image.naturalHeight])})`);
+  if(!drawing.loaded||drawing.images!==9||drawing.smoothing||Math.abs(drawing.physicalWidth-164)>1)errors.push('pixel rendering failed');
+  const before=cat.window.getBounds();cat.motion.until=Date.now()-1;cat.tick();await wait(500);
+  const walking={mode:cat.motion.mode,frame:await cat.window.webContents.executeJavaScript(`canvas.dataset.frame`),x:cat.window.getBounds().x};
+  if(walking.mode!=='walk'||walking.x===before.x)errors.push('cat did not walk');
+  fs.writeFileSync(dataFile('cat-walk-preview.png'),(await cat.window.webContents.capturePage()).toPNG());
+  cat.motion.until=Date.now()-1;cat.tick();await wait(100);
+  const resting=cat.motion.mode;if(resting!=='sit')errors.push('cat did not rest');
+  fs.writeFileSync(dataFile('cat-sit-preview.png'),(await cat.window.webContents.capturePage()).toPNG());
+  await cat.window.webContents.executeJavaScript(`document.getElementById('cat').click()`);await wait(200);
+  const returned={active:cat.active,catHidden:!cat.window.isVisible(),humanVisible:pet.isVisible(),chatVisible:subtitle.isVisible(),bounds:pet.getBounds()};
+  returned.portrait=await pet.webContents.executeJavaScript(`({width:document.getElementById('portrait').getBoundingClientRect().width,height:document.getElementById('portrait').getBoundingClientRect().height})`);
+  returned.draft=await subtitle.webContents.executeJavaScript(`document.getElementById('input').value`);
+  if(returned.active||!returned.catHidden||!returned.humanVisible||!returned.chatVisible)errors.push('click did not restore human chat');
+  if(JSON.stringify(history)!==original.history||config.memory!==original.memory||config.persona!==original.persona||config.worldbook!==original.worldbook||expressionController.manual!==original.manual||calls!==0)errors.push('cat mode changed human data or called API');
+  if(JSON.stringify(returned.portrait)!==JSON.stringify(original.portrait)||returned.draft!=='尚未发送的输入')errors.push('human size or draft changed');
+  writeJSON(dataFile('cat-smoke-result.json'),{entered,drawing,walking,resting,returned,apiCalls:calls,errors});app.exit(errors.length?1:0);
+ }catch(error){writeJSON(dataFile('cat-smoke-result.json'),{error:error.message,stack:error.stack,errors});app.exit(1);}
+}
 function handlers() {
+  ipcMain.handle('enter-cat',()=>enterCat());
+  ipcMain.handle('cat-artwork',event=>{if(event.sender!==cat?.window?.webContents)throw Error('猫猫窗口尚未打开。');return cat.artwork();});
+  ipcMain.handle('return-human',event=>{if(event.sender===cat?.window?.webContents)showSubtitle(false);});
   ipcMain.handle('load', viewState);
   ipcMain.handle('select-expression', (_, id) => {
     if (!validExpression(id) || !expressionArtwork().images[id]) throw new Error('这个表情的图片尚未准备好。');
@@ -314,7 +363,7 @@ function handlers() {
     if(active||testing)throw new Error('请等当前请求结束后再切换角色。');
     if(!validSlot(index))throw new Error('请选择有效槽位。');
     if(index===config.activeCharacter)return viewState();
-    store();characterFiles.saveHistory(config.activeCharacter,history);
+    cat?.leave();store();characterFiles.saveHistory(config.activeCharacter,history);
     const next=structuredClone(config);activate(next,index);persistConfig(next);
     history=characterFiles.loadHistory(index);
     expressionController.dispose();expressionController=new ExpressionController({manual:config.manualExpression,onChange:publishExpression});
@@ -475,11 +524,11 @@ function friendlyError(error) {
   if (error.message === 'fetch failed') return '无法连接服务商，请检查网络后重试。';
   return error.message;
 }
-const isolatedSmoke=process.argv.includes('--smoke-test')&&Boolean(process.env.KAIROS_DATA_DIR);
+const isolatedSmoke=(process.argv.includes('--smoke-test')||process.argv.includes('--cat-smoke-test'))&&Boolean(process.env.KAIROS_DATA_DIR);
 if (!isolatedSmoke && !app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on('second-instance', () => { if (pet) showSubtitle(); });
-  app.on('before-quit', () => { app.isQuitting = true; clearInterval(dragTimer);clearInterval(topmostTimer);clearTimeout(patSafetyTimer); expressionController?.dispose(); active?.abort(); });
+  app.on('second-instance', (_,argv) => {if(pet){if(argv.includes('--cat')&&cat?.available&&config.activeCharacter===0&&!active&&!testing)enterCat();else showSubtitle();}});
+  app.on('before-quit', () => { app.isQuitting = true;cat?.dispose(); clearInterval(dragTimer);clearInterval(topmostTimer);clearTimeout(patSafetyTimer); expressionController?.dispose(); active?.abort(); });
   app.whenReady().then(() => {
     config = { ...defaults(), ...readJSON(dataFile('settings.json'), {}) };
     delete config.greetings; delete config.speakGreetings;

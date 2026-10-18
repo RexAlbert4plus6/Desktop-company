@@ -8,6 +8,7 @@ function receiveArtwork(value){expressionOptions=value.expressionOptions;express
 $('accessory-toggle').onclick=()=>{closeWheel();$('accessory-panel').hidden=!$('accessory-panel').hidden;};
 $('accessory-close').onclick=closeAccessories;
 $('character-toggle').onclick=()=>window.kairos.openSettings();
+$('cat-toggle').onclick=async()=>{try{await window.kairos.enterCat();}catch(error){$('notice').textContent=errorText(error);}};
 function updateExpression(value) {
   expression = value;
   $('expression-toggle').textContent = value.locked ? '表情 · 固定' : '切换表情';
@@ -66,6 +67,7 @@ function setBusy(value) { busy = value; $('send').disabled = value; $('summarize
 function receive(value) {
   if(previousCharacter!==value.characterId){if(previousCharacter!==null)drafts[previousCharacter]=$('input').value;$('input').value=drafts[value.characterId]||'';previousLength=null;timeline=[];pendingText=null;previousCharacter=value.characterId;}
   state = {...state,...value}; setBusy(value.busy);document.querySelector('.toolbar span').textContent=value.config.characterName||'角色';
+  $('cat-toggle').hidden=!value.catAvailable;$('cat-toggle').disabled=value.busy;
   if (value.expression) updateExpression(value.expression);
   if (previousLength === null || value.history.length < previousLength) { timeline = value.history.slice(-3); pendingText = null; }
   else if (value.history.length > previousLength) {

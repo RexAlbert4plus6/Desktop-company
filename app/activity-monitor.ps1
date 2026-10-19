@@ -16,14 +16,16 @@ $lastUndo=$false
 $detectUndo=KAIROS_UNDO_ENABLED
 $lastSent=[DateTime]::UtcNow.AddSeconds(-2)
 $drawPattern='^(photoshop|illustrator|aseprite|krita|clipstudiopaint|sai2?|paintdotnet|mspaint|firealpaca|medibangpaint|blender)$'
+# Keep one parent handle for the session rather than allocating one every poll.
+$parent=[Diagnostics.Process]::GetProcessById(KAIROS_PARENT_PID)
 while($true){
  # Parent PID is supplied as a numeric literal by the application, never by user text.
- try {$parent=[Diagnostics.Process]::GetProcessById(KAIROS_PARENT_PID);if($parent.HasExited){break}}catch{break}
+ try {if($parent.HasExited){break}}catch{break}
  $window=[KairosActivity]::GetForegroundWindow()
  $changed=$window -ne $lastWindow
  if($changed){
   $appName='';$lastUndo=$false;$lastWindow=$window
-  if($window -ne [IntPtr]::Zero){[uint32]$foregroundId=0;[void][KairosActivity]::GetWindowThreadProcessId($window,[ref]$foregroundId);try{$appName=[Diagnostics.Process]::GetProcessById($foregroundId).ProcessName.ToLowerInvariant()}catch{}}
+  if($window -ne [IntPtr]::Zero){[uint32]$foregroundId=0;[void][KairosActivity]::GetWindowThreadProcessId($window,[ref]$foregroundId);$targetProcess=$null;try{$targetProcess=[Diagnostics.Process]::GetProcessById($foregroundId);$appName=$targetProcess.ProcessName.ToLowerInvariant()}catch{}finally{if($targetProcess){$targetProcess.Dispose()}}}
  }
  $own=$appName -in @('kairosdesktop','electron')
  # Only Ctrl+Z state in known creative applications is sampled. No text or other keys are recorded.
@@ -35,3 +37,4 @@ while($true){
  }
  Start-Sleep -Milliseconds 50
 }
+$parent.Dispose()

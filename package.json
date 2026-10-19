@@ -1,6 +1,6 @@
 {
   "name": "kairos-desktop",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "A Windows desktop companion with local chat and editable memory",
   "main": "app/main.cjs",
@@ -9,7 +9,7 @@
     "test": "node --test test/*.test.cjs",
     "postpackage": "node scripts/prepare-character-folders.cjs",
     "source": "node scripts/prepare-public-source.cjs",
-    "package": "electron-packager . KairosDesktop --platform=win32 --arch=x64 --out=dist/v0.6.0 --overwrite --ignore=^/dist --ignore=^/test --ignore=^/private --ignore=^/character$ --ignore=^/release --ignore=^/runtime-data --ignore=^/.git --ignore=lnk$ --ignore=^/dlc$"
+    "package": "electron-packager . KairosDesktop --platform=win32 --arch=x64 --out=dist/v0.7.0 --overwrite --ignore=^/dist --ignore=^/test --ignore=^/private --ignore=^/character$ --ignore=^/release --ignore=^/runtime-data --ignore=^/.git --ignore=lnk$ --ignore=^/dlc$"
   },
   "devDependencies": {
     "@electron/packager": "^20.3.0",

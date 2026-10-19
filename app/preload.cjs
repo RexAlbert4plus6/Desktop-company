@@ -1,6 +1,15 @@
 const { contextBridge, ipcRenderer,webUtils } = require('electron');
 contextBridge.exposeInMainWorld('kairos', {
   load: () => ipcRenderer.invoke('load'),
+  openCompanion:()=>ipcRenderer.invoke('companion-open'),
+  companionState:()=>ipcRenderer.invoke('companion-state'),
+  companionStart:()=>ipcRenderer.invoke('companion-start'),
+  companionStop:()=>ipcRenderer.invoke('companion-stop'),
+  companionSave:value=>ipcRenderer.invoke('companion-save',value),
+  companionSpeak:reason=>ipcRenderer.invoke('companion-speak',reason),
+  hideCompanionToast:()=>ipcRenderer.invoke('companion-hide-toast'),
+  onCompanionState:callback=>{ipcRenderer.on('companion-state',(_,value)=>callback(value));},
+  onCompanionLine:callback=>{ipcRenderer.on('companion-line',(_,value)=>callback(value));},
   enterCat:()=>ipcRenderer.invoke('enter-cat'),
   returnHuman:()=>ipcRenderer.invoke('return-human'),
   catArtwork:()=>ipcRenderer.invoke('cat-artwork'),

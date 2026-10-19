@@ -1,0 +1,11 @@
+const $=id=>document.getElementById(id);let state;
+const labels={browser:'浏览器',drawing:'绘画 / 创作',work:'工作',music:'音乐',game:'游戏',general:'其他软件',undo:'连续撤回',oops:'手动报告翻车'};
+function show(value){state=value;$('status').textContent=value.status;$('budget').textContent=`今日 ${value.count} / ${value.prefs.dailyLimit} 次 · token 使用：0`;$('start').disabled=value.enabled;$('stop').disabled=!value.enabled;for(const id of ['roast','oops'])$(id).disabled=!value.enabled;$('last').textContent=value.lastText||'还没有陪伴吐槽。';}
+function fill(value){show(value);for(const id of ['dailyLimit','cooldown'])$(id).value=value.prefs[id];for(const id of ['undoEnabled','gameMode'])$(id).checked=value.prefs[id];const area=$('line-editors');area.replaceChildren();for(const [kind,title]of Object.entries(labels)){const label=document.createElement('label');label.textContent=title;const editor=document.createElement('textarea');editor.id='lines-'+kind;editor.rows=4;editor.value=value.prefs.lines[kind].join('\n');label.append(editor);area.append(label);}}
+function error(e){$('notice').textContent=e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/,'');}
+async function save(){const value={lines:{}};for(const id of ['dailyLimit','cooldown'])value[id]=$(id).value;for(const id of ['undoEnabled','gameMode'])value[id]=$(id).checked;for(const kind of Object.keys(labels))value.lines[kind]=$('lines-'+kind).value.split('\n');return window.kairos.companionSave(value);}
+$('prefs').onsubmit=async event=>{event.preventDefault();try{fill(await save());$('notice').textContent='已保存，本地运行，不消耗 token。';}catch(e){error(e);}};
+$('start').onclick=async()=>{try{await save();show(await window.kairos.companionStart());$('notice').textContent='请切回游戏或工作软件。识别启动后，每十分钟尝试吐槽一次。';}catch(e){error(e);}};
+$('stop').onclick=async()=>{try{show(await window.kairos.companionStop());$('notice').textContent='已停止软件识别与撤回检测。';}catch(e){error(e);}};
+for(const [id,reason]of [['roast','manual'],['oops','oops']])$(id).onclick=async()=>{try{const result=await window.kairos.companionSpeak(reason);$('notice').textContent=result.spoken?'已吐槽，冷却开始。':result.message;}catch(e){error(e);}};
+window.kairos.companionState().then(fill).catch(error);window.kairos.onCompanionState(show);

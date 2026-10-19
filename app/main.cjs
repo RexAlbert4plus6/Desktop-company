@@ -8,6 +8,7 @@ const { EXPRESSIONS, validExpression, parseExpressionReply, ExpressionController
 const {ACCESSORIES,headpatReaction,greetingAllowed,sample}=require('./interactions.cjs');
 const {ASSET_IDS,validSlot,syncSlot,activate,migrateCharacters,CharacterFiles}=require('./characters.cjs');
 const {CatAddon}=require('./cat-addon.cjs');
+const {CompanionAddon}=require('./companion-addon.cjs');
 app.setName('Kairos Desktop');
 const root = path.join(__dirname, '..');
 // Keep private runtime data outside the source tree, including in development.
@@ -15,6 +16,7 @@ app.setPath('userData', process.env.KAIROS_DATA_DIR || path.join(app.getPath('ap
 let pet, chat, subtitle, tray, config, history, active, dragOrigin, dragTimer, testing = false;
 let expressionController, characterFiles, topmostTimer, lastPatFinished=0, patActive=false,patSafetyTimer;
 let cat;
+let companion;
 const SUBTITLE_WIDTH = 380, SUBTITLE_HEIGHT = 300;
 const dataFile = name => path.join(app.getPath('userData'), name);
 function privateFolder() { return app.isPackaged ? path.join(path.dirname(app.getPath('exe')), 'private') : path.join(root, 'private'); }
@@ -42,7 +44,7 @@ function expressionArtwork() {
   }));
   return { images, options: EXPRESSIONS.map(item=>({...item, available:Boolean(images[item.id])})), accessories:ACCESSORIES.map(item=>({id:item.id,label:item.label,image:imageURL(assetFile(config.activeCharacter,item.id)),enabled:Boolean(config.accessories?.[item.id])})) };
 }
-function viewState(){const art=expressionArtwork();return {...publicState(),image:art.images.normal,expressionImages:art.images,expressionOptions:art.options,accessories:art.accessories};}
+function viewState(){const art=expressionArtwork();return {...publicState(),companion:companion?.state(),image:art.images.normal,expressionImages:art.images,expressionOptions:art.options,accessories:art.accessories};}
 function refreshArtwork(){for(const win of [pet,subtitle,chat])if(win&&!win.isDestroyed())win.webContents.send('artwork',viewState());}
 function publishExpression(value) { for (const win of [pet, subtitle]) if (win && !win.isDestroyed()) win.webContents.send('expression', value); }
 function broadcast() { for (const win of [pet, chat, subtitle]) if (win && !win.isDestroyed()) win.webContents.send('state', publicState()); }
@@ -80,7 +82,7 @@ function getKey() {
 function persistConfig(next){syncSlot(next);writeJSON(dataFile('settings.json'),next);characterFiles.saveCard(next.activeCharacter,next.characters[next.activeCharacter]);config=next;}
 function store() { persistConfig(config); }
 function historyFile(){return characterFiles.historyFile(config.activeCharacter);}
-function maintainTopmost(){for(const win of [pet,subtitle,chat,cat?.window])if(win&&!win.isDestroyed()){
+function maintainTopmost(){for(const win of [pet,subtitle,chat,cat?.window,companion?.toast])if(win&&!win.isDestroyed()){
  win.setAlwaysOnTop(config.alwaysOnTop,config.alwaysOnTop?'screen-saver':'normal');
  if(config.alwaysOnTop&&win.isVisible())win.moveTop();
 }}
@@ -106,15 +108,18 @@ function petMenu() {
     { label: '查看聊天记录', click: () => showChat() },
     { label: '设置 / 关于我 / 记忆', click: () => showChat(true) },
     {label:'角色槽位 / 导入图片',click:()=>showChat(true)},
+    {label:'陪伴模式 / 控制面板',click:()=>companion.open()},
+    {label:'关闭陪伴 · 停止识别',click:()=>companion.stop()},
     {label:'猫猫试用（本地 DLC）',enabled:Boolean(cat?.available&&config.activeCharacter===0&&!active&&!testing),click:()=>enterCat()},
     { label: '显示角色', click: () => {cat?.leave();pet.show();} },
-    { label: '暂时隐藏', click: () => {cat?.leave();pet.hide(); chat.hide(); subtitle.hide(); } },
+    { label: '暂时隐藏', click: () => {companion?.stop();companion?.control?.hide();cat?.leave();pet.hide(); chat.hide(); subtitle.hide(); } },
     { type: 'separator' }, { label: '退出 Kairos', click: () => app.quit() }
   ]).popup();
 }
 function enterCat(){
  if(active||testing)throw Error('请等当前回复结束再试猫猫。');
  if(config.activeCharacter!==0)throw Error('这个猫猫 DLC 仅用于 Kairos 槽位。');
+ companion?.stop();
  clearInterval(dragTimer);dragOrigin=null;patActive=false;clearTimeout(patSafetyTimer);expressionController.endTemporary();
  cat.enter(pet.getBounds());pet.hide();subtitle.hide();chat.hide();
 }
@@ -124,15 +129,16 @@ function createWindows() {
   subtitle = new BrowserWindow(windowOptions({ width: SUBTITLE_WIDTH, height: SUBTITLE_HEIGHT, frame: false, transparent: true, thickFrame: false, resizable: false, maximizable: false, skipTaskbar: true, alwaysOnTop: config.alwaysOnTop, show: false }));
   chat = new BrowserWindow(windowOptions({ width: 440, height: 650, minWidth: 380, minHeight: 500, title: 'Kairos · 聊一会儿', backgroundColor: '#f5f8fb', show: false, autoHideMenuBar: true, alwaysOnTop: config.alwaysOnTop }));
   cat=new CatAddon({folder:path.join(app.isPackaged?path.dirname(app.getPath('exe')):root,'dlc','kairos-cat'),options:windowOptions,secure:secureWindow,onReturn:()=>showSubtitle(false),topmost:()=>config.alwaysOnTop});
+  companion=new CompanionAddon({saved:readJSON(dataFile('companion.json'),{}),save:value=>writeJSON(dataFile('companion.json'),value),options:windowOptions,secure:secureWindow,anchor:()=>pet.getBounds(),topmost:()=>config.alwaysOnTop,allowed:()=>!active&&!testing&&!cat.active&&!patActive,onReact:value=>{const id=['undo','oops','game'].includes(value.kind)?'mock':value.kind==='music'?'smile':'smirk';if(expressionArtwork().images[id])expressionController.automatic(id);},onChange:value=>{for(const win of [chat,subtitle])if(win&&!win.isDestroyed())win.webContents.send('companion-state',value);}});
   secureWindow(pet); secureWindow(chat); secureWindow(subtitle);
   subtitle.loadFile(path.join(__dirname, 'subtitle.html'));
   dockSubtitle();
   for (const win of [pet, subtitle]) { win.webContents.setZoomFactor(1); win.webContents.on('zoom-changed', () => win.webContents.setZoomFactor(1)); }
   pet.loadFile(path.join(__dirname, 'pet.html'));
   chat.loadFile(path.join(__dirname, 'index.html'));
-  pet.once('ready-to-show', () => {if(process.argv.includes('--cat')&&cat.available&&config.activeCharacter===0)enterCat();else pet.showInactive();});
+  pet.once('ready-to-show', () => {if(process.argv.includes('--cat')&&cat.available&&config.activeCharacter===0)enterCat();else pet.showInactive();if(process.argv.includes('--companion'))companion.open();});
   chat.on('close', event => { if (!app.isQuitting) { event.preventDefault(); chat.hide(); } });
-  chat.once('ready-to-show', () => { if (!config.profiles[config.provider]?.key && !process.argv.some(arg=>['--smoke-test','--cat-smoke-test','--cat'].includes(arg))) showChat(true); });
+  chat.once('ready-to-show', () => { if (!config.profiles[config.provider]?.key && !process.argv.some(arg=>['--smoke-test','--cat-smoke-test','--companion-smoke-test','--cat','--companion'].includes(arg))) showChat(true); });
   const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'tray.png'));
   tray = new Tray(icon);
   tray.setToolTip('Kairos Desktop · 点击聊天，右键菜单');
@@ -143,12 +149,15 @@ function createWindows() {
     { label: '打开桌面字幕', click: () => showSubtitle() },
     { label: '查看聊天记录', click: () => showChat() },
     { label: '设置', click: () => showChat(true) },
+    {label:'陪伴模式 / 控制面板',click:()=>companion.open()},
+    {label:'关闭陪伴 · 停止识别',click:()=>companion.stop()},
     { label: '退出', click: () => app.quit() }
   ]));
   for(const win of [pet,subtitle,chat]){win.on('show',maintainTopmost);win.on('restore',maintainTopmost);}
   maintainTopmost();topmostTimer=setInterval(maintainTopmost,2000);
   if (process.argv.includes('--smoke-test') && process.env.KAIROS_DATA_DIR) runSmokeTest();
   if(process.argv.includes('--cat-smoke-test')&&process.env.KAIROS_DATA_DIR)runCatSmokeTest();
+  if(process.argv.includes('--companion-smoke-test')&&process.env.KAIROS_DATA_DIR)runCompanionSmokeTest();
 }
 async function runSmokeTest() {
   try {
@@ -347,7 +356,48 @@ async function runCatSmokeTest(){
   writeJSON(dataFile('cat-smoke-result.json'),{entered,drawing,walking,resting,returned,apiCalls:calls,errors});app.exit(errors.length?1:0);
  }catch(error){writeJSON(dataFile('cat-smoke-result.json'),{error:error.message,stack:error.stack,errors});app.exit(1);}
 }
+async function runCompanionSmokeTest(){
+ const errors=[];let apiCalls=0;global.fetch=async()=>{apiCalls++;throw Error('Local companion must not call API');};
+ const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+ try{
+  await Promise.all([pet,chat,subtitle].map(win=>win.webContents.isLoading()?new Promise(resolve=>win.webContents.once('did-finish-load',resolve)):Promise.resolve()));
+  const original=JSON.stringify({history,memory:config.memory,worldbook:config.worldbook});
+  await subtitle.webContents.executeJavaScript(`document.getElementById('companion-toggle').click()`);
+  for(let i=0;i<50;i++){await wait(100);if(companion.control&&!companion.control.webContents.isLoading()&&await companion.control.webContents.executeJavaScript(`Boolean(state)`))break;}
+  const initiallyOff=!companion.state().enabled&&!companion.monitor.child;
+  await companion.control.webContents.executeJavaScript(`document.getElementById('start').click()`);
+  for(let i=0;i<100&&!companion.state().healthy;i++)await wait(100);
+  const liveSensor={healthy:companion.state().healthy,hasProcess:Boolean(companion.monitor.child)};
+  if(!initiallyOff||!liveSensor.healthy||!liveSensor.hasProcess)errors.push('local sensor startup failed');
+  companion.monitor.stop();clearInterval(companion.timer);
+  let now=Date.now();companion.session.now=()=>now;companion.session.configure({...companion.session.prefs,dailyLimit:4,cooldown:30});
+  companion.session.report({app:'chrome'});
+  const manual=await companion.control.webContents.executeJavaScript(`window.kairos.companionSpeak('manual')`);await wait(250);
+  const cooldown=await companion.control.webContents.executeJavaScript(`window.kairos.companionSpeak('manual')`);
+  now+=31000;for(let i=0;i<4;i++){companion.session.report({app:'aseprite',undo:true});now+=200;}
+  const undo=companion.state().lastReason;
+  now+=600000;companion.session.report({app:'winword'});now+=6000;companion.session.report({app:'winword'});companion.session.nextAuto=now;companion.session.tick();const timer=companion.state().lastReason;
+  now+=31000;companion.session.report({app:'arknights'});const oops=await companion.control.webContents.executeJavaScript(`window.kairos.companionSpeak('oops')`);await wait(150);
+  now+=31000;const capped=await companion.control.webContents.executeJavaScript(`window.kairos.companionSpeak('manual')`);
+  const toast=await companion.toast.webContents.executeJavaScript(`document.getElementById('line').textContent`);
+  if(!manual.spoken||cooldown.spoken||undo!=='undo'||timer!=='timer'||!oops.spoken||capped.spoken||companion.state().count!==4||!toast)errors.push('shared limits or events failed');
+  const noFocusSteal=!companion.toast.isFocused();
+  const captures=[];await wait(500);
+  for(const [name,win]of [['panel',companion.control],['toast',companion.toast]]){try{fs.writeFileSync(dataFile('companion-'+name+'-preview.png'),(await win.webContents.capturePage()).toPNG());captures.push(name);}catch{await wait(250);try{fs.writeFileSync(dataFile('companion-'+name+'-preview.png'),(await win.webContents.capturePage()).toPNG());captures.push(name);}catch{captures.push(name+': screenshot unavailable');}}}
+  await companion.control.webContents.executeJavaScript(`window.kairos.companionStop()`);
+  const stopped=!companion.state().enabled&&!companion.monitor.child&&!companion.toast.isVisible();
+  if(!stopped||!noFocusSteal||apiCalls||original!==JSON.stringify({history,memory:config.memory,worldbook:config.worldbook}))errors.push('stop, focus, data isolation or zero-token guarantee failed');
+  writeJSON(dataFile('companion-smoke-result.json'),{initiallyOff,liveSensor,manual,cooldown,undo,timer,oops,capped,toast,noFocusSteal,stopped,apiCalls,captures,errors});app.exit(errors.length?1:0);
+ }catch(error){companion?.monitor.stop();writeJSON(dataFile('companion-smoke-result.json'),{error:error.message,stack:error.stack,errors});app.exit(1);}
+}
 function handlers() {
+  ipcMain.handle('companion-open',()=>companion.open());
+  ipcMain.handle('companion-state',()=>companion.state());
+  ipcMain.handle('companion-start',event=>{if(event.sender!==companion.control?.webContents)throw Error('请从陪伴控制面板开启。');if(cat.active||active||testing)throw Error('请先回到人物模式并等待当前回复结束。');return companion.start();});
+  ipcMain.handle('companion-stop',()=>companion.stop());
+  ipcMain.handle('companion-save',(event,value)=>{if(event.sender!==companion.control?.webContents)throw Error('请从陪伴控制面板修改设置。');return companion.configure(value);});
+  ipcMain.handle('companion-speak',(_,reason)=>companion.session.speak(reason==='oops'?'oops':'manual'));
+  ipcMain.handle('companion-hide-toast',()=>companion.hideToast());
   ipcMain.handle('enter-cat',()=>enterCat());
   ipcMain.handle('cat-artwork',event=>{if(event.sender!==cat?.window?.webContents)throw Error('猫猫窗口尚未打开。');return cat.artwork();});
   ipcMain.handle('return-human',event=>{if(event.sender===cat?.window?.webContents)showSubtitle(false);});
@@ -363,7 +413,7 @@ function handlers() {
     if(active||testing)throw new Error('请等当前请求结束后再切换角色。');
     if(!validSlot(index))throw new Error('请选择有效槽位。');
     if(index===config.activeCharacter)return viewState();
-    cat?.leave();store();characterFiles.saveHistory(config.activeCharacter,history);
+    companion?.stop();cat?.leave();store();characterFiles.saveHistory(config.activeCharacter,history);
     const next=structuredClone(config);activate(next,index);persistConfig(next);
     history=characterFiles.loadHistory(index);
     expressionController.dispose();expressionController=new ExpressionController({manual:config.manualExpression,onChange:publishExpression});
@@ -524,11 +574,11 @@ function friendlyError(error) {
   if (error.message === 'fetch failed') return '无法连接服务商，请检查网络后重试。';
   return error.message;
 }
-const isolatedSmoke=(process.argv.includes('--smoke-test')||process.argv.includes('--cat-smoke-test'))&&Boolean(process.env.KAIROS_DATA_DIR);
+const isolatedSmoke=['--smoke-test','--cat-smoke-test','--companion-smoke-test'].some(arg=>process.argv.includes(arg))&&Boolean(process.env.KAIROS_DATA_DIR);
 if (!isolatedSmoke && !app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on('second-instance', (_,argv) => {if(pet){if(argv.includes('--cat')&&cat?.available&&config.activeCharacter===0&&!active&&!testing)enterCat();else showSubtitle();}});
-  app.on('before-quit', () => { app.isQuitting = true;cat?.dispose(); clearInterval(dragTimer);clearInterval(topmostTimer);clearTimeout(patSafetyTimer); expressionController?.dispose(); active?.abort(); });
+  app.on('second-instance', (_,argv) => {if(pet){if(argv.includes('--companion'))companion.open();else if(argv.includes('--cat')&&cat?.available&&config.activeCharacter===0&&!active&&!testing)enterCat();else showSubtitle();}});
+  app.on('before-quit', () => { app.isQuitting = true;companion?.dispose();cat?.dispose(); clearInterval(dragTimer);clearInterval(topmostTimer);clearTimeout(patSafetyTimer); expressionController?.dispose(); active?.abort(); });
   app.whenReady().then(() => {
     config = { ...defaults(), ...readJSON(dataFile('settings.json'), {}) };
     delete config.greetings; delete config.speakGreetings;

@@ -9,6 +9,8 @@ $('accessory-toggle').onclick=()=>{closeWheel();$('accessory-panel').hidden=!$('
 $('accessory-close').onclick=closeAccessories;
 $('character-toggle').onclick=()=>window.kairos.openSettings();
 $('cat-toggle').onclick=async()=>{try{await window.kairos.enterCat();}catch(error){$('notice').textContent=errorText(error);}};
+$('companion-toggle').onclick=()=>window.kairos.openCompanion();
+window.kairos.onCompanionState(value=>{$('companion-toggle').textContent=value.enabled?'陪伴中':'陪伴';});
 function updateExpression(value) {
   expression = value;
   $('expression-toggle').textContent = value.locked ? '表情 · 固定' : '切换表情';

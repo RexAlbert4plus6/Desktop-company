@@ -1,5 +1,11 @@
 const { contextBridge, ipcRenderer,webUtils } = require('electron');
 contextBridge.exposeInMainWorld('kairos', {
+  tarotOpen:()=>ipcRenderer.invoke('tarot-open'),
+  tarotState:()=>ipcRenderer.invoke('tarot-state'),
+  tarotRead:value=>ipcRenderer.invoke('tarot-read',value),
+  tarotNew:()=>ipcRenderer.invoke('tarot-new'),
+  tarotClose:()=>ipcRenderer.invoke('tarot-close'),
+  onTarotState:callback=>{ipcRenderer.on('tarot-state',(_,value)=>callback(value));},
   load: () => ipcRenderer.invoke('load'),
   openCompanion:()=>ipcRenderer.invoke('companion-open'),
   companionState:()=>ipcRenderer.invoke('companion-state'),

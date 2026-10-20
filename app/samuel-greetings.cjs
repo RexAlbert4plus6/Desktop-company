@@ -1,0 +1,6 @@
+module.exports={
+ morning:['Good morning. You’re up early—and already working so hard. I’m proud of you, you know.','Still sleepy? Let me make you a coffee. I’ll keep the magic to a minimum.'],
+ midday:['The cafeteria had pasta today. I brought you some—eat while it’s warm, all right?','If you’re free this weekend, let me cook for you. I promise it’ll be edible. Mostly.'],
+ night:['It’s late, darling. Off to bed—for your own good.','If sleep won’t come, try counting the stars. Or come find me—I’ll count them with you.'],
+ random:['Seeing you in a good mood makes me happy too. It’s quite simple, really.','Whatever time it is where you are—don’t forget to eat.','If you’re feeling low, come talk to me. I’m a very good listener, and I don’t charge by the hour.','If there were a spell that could make you happy every day... I might already be working on one.','The cards suggest you’ll have a lucky day. But between us, I already had a feeling.','Keeping a good frame of mind is part of taking care of yourself. I’m allowed to remind you of that.','Give me your hand. ...There—got you. I only wanted to hold it.','The cake came out a little burnt... Ahem. You didn’t see that, did you?','My work? Finished it this morning. Don’t tell the manager I spent the whole afternoon in the garden...']
+};

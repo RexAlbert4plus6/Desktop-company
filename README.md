@@ -1,4 +1,6 @@
-# Kairos Desktop
+# Desktop-company
+
+0.8.0 修复角色切换后的名字显示，支持 Samuel 独立摸头反馈、时段问候和 [Draw A Card](docs/tarot.md)。程序与仓库统一更名 Desktop-company。更新保留原数据目录和所有角色聊天。
 
 0.7.0 加入手动开启的[本地陪伴模式](docs/companion.md)：识别软件类型、定时固定吐槽、连续撤回反馈，共用冷却和每日次数限额，零 token。
 
@@ -8,7 +10,7 @@ Windows 桌面陪伴角色，支持自带 DeepSeek / OpenRouter API。点击角�
 
 ## 使用
 
-运行打包文件夹里的 `KairosDesktop.exe`，不需要另外安装 Node.js。
+运行打包文件夹里的 `Desktop-company.exe`，不需要另外安装 Node.js。
 
 1. 点击角色打开气泡，在设置中选择 DeepSeek 或 OpenRouter。
 2. 粘贴自己的 API 密钥，填写模型名，点击“保存并测试连接”。DeepSeek 地址和默认模型已填好。
@@ -67,7 +69,7 @@ npm start
 npm run package
 ```
 
-输出位于 `dist/v0.7.0/KairosDesktop-win32-x64`。请保留整个文件夹，不要单独移动 exe。公开构建使用占位图，可在设置中导入自己的角色。仓库包含 GitHub Actions Windows 构建配置。
+输出位于 `dist/v0.8.0/Desktop-company-win32-x64`。请保留整个文件夹，不要单独移动 exe。公开构建使用占位图，可在设置中导入自己的角色。仓库包含 GitHub Actions Windows 构建配置。
 
 `npm run source` 按白名单生成 `release/source` 和哈希清单，供审查与发布。原型暂未提供代码签名或自动更新。
 

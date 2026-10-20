@@ -22,6 +22,7 @@ function renderHistory() {
   area.scrollTop = area.scrollHeight;
 }
 function fill() {
+  $('input').placeholder=`和 ${state.config.characterName||'角色'} 说点什么…`;document.title=`${state.config.characterName} · Desktop-company`;
   document.querySelector('.identity strong').textContent=state.config.characterName||'角色';
   for (const field of ['provider','base','model','about','memory','persona','worldbook','size','characterName','greetingCooldownMinutes']) $(field).value = state.config[field];
   renderCharacters();
@@ -56,7 +57,7 @@ $('test').onclick = async () => {
 $('composer').onsubmit = async event => {
   event.preventDefault(); const text = $('input').value.trim(); if (busy || !text) return;
   if (!state.hasKey) { showSettings(true); toast('先填写密钥，再点“保存并测试连接”。'); return; }
-  setBusy(true); $('status').textContent = 'Kairos 正在回复…';
+  setBusy(true); $('status').textContent = `${state.config.characterName} 正在回复…`;
   const preview = document.createElement('article'); preview.className = 'message user';
   const bubble = document.createElement('div'); bubble.className = 'bubble'; bubble.textContent = text;
   preview.append(bubble); $('messages').append(preview); $('messages').scrollTop = $('messages').scrollHeight;
@@ -71,15 +72,16 @@ $('clear').onclick = async () => { try { state = { ...state, ...await window.kai
 window.kairos.onSettings(() => showSettings(true));
 window.kairos.onState(value => {
   if (!state) return;
-  const oldMemory = state.config.memory;
+  const oldName=state.config.characterName;const oldMemory = state.config.memory;
   const oldLength = state.history.length;
   state = { ...state, ...value };
+  if(oldName!==value.config.characterName)fill();
   if (value.config.memory !== oldMemory && $('memory').value === oldMemory) $('memory').value = value.config.memory;
   if (value.history.length !== oldLength) renderHistory();
   setBusy(value.busy); $('summarize').disabled = value.busy;
 });
 window.kairos.onArtwork(value=>{state={...state,...value};fill();renderHistory();});
-const imageFields=[['normal','Normal'],['blink-closed','Blink · 闭眼'],['blink-half','半闭眼（可选）'],['happy','开心'],['unhappy','不悦'],['angry','生气'],['smile','微笑'],['surprised','惊喜'],['confuse','疑惑（可选）'],['mock','嗤笑（可选）'],['smirk','坏笑（可选）']];
+const imageFields=[['normal','Normal'],['blink-closed','Blink · 闭眼'],['blink-half','半闭眼（可选）'],['happy','开心'],['unhappy','不悦'],['angry','生气'],['smile','微笑'],['smile2','微笑 2（可选）'],['surprised','惊喜'],['confuse','疑惑（可选）'],['mock','嗤笑（可选）'],['smirk','坏笑（可选）']];
 function renderCharacters(){
  const list=$('character-slots');list.replaceChildren();
  for(const slot of state.slots){const button=document.createElement('button');button.type='button';button.className='slot-card'+(slot.index===state.characterId?' selected':'');

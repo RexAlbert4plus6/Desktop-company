@@ -9,7 +9,8 @@ const {ACCESSORIES,headpatReaction,greetingAllowed,sample}=require('./interactio
 const {ASSET_IDS,validSlot,syncSlot,activate,migrateCharacters,CharacterFiles}=require('./characters.cjs');
 const {CatAddon}=require('./cat-addon.cjs');
 const {CompanionAddon}=require('./companion-addon.cjs');
-app.setName('Kairos Desktop');
+const {TarotAddon}=require('./tarot-addon.cjs');
+app.setName('Desktop-company');
 const root = path.join(__dirname, '..');
 // Keep private runtime data outside the source tree, including in development.
 app.setPath('userData', process.env.KAIROS_DATA_DIR || path.join(app.getPath('appData'), 'KairosDesktop'));
@@ -17,6 +18,7 @@ let pet, chat, subtitle, tray, config, history, active, dragOrigin, dragTimer, t
 let expressionController, characterFiles, topmostTimer, lastPatFinished=0, patActive=false,patSafetyTimer;
 let cat;
 let companion;
+let tarot;
 const SUBTITLE_WIDTH = 380, SUBTITLE_HEIGHT = 300;
 const dataFile = name => path.join(app.getPath('userData'), name);
 function privateFolder() { return app.isPackaged ? path.join(path.dirname(app.getPath('exe')), 'private') : path.join(root, 'private'); }
@@ -27,7 +29,7 @@ function defaults() {
 function publicState() {
   const profile = config.profiles[config.provider] || {};
   const profiles = Object.fromEntries(Object.entries(config.profiles).map(([name, value]) => [name, { model: value.model, hasKey: Boolean(value.key) }]));
-  return { catAvailable:Boolean(cat?.available&&config.activeCharacter===0),config: { ...config, profiles, characters:undefined }, characterId:config.activeCharacter, slots:config.characters.map((item,index)=>({index,name:item.characterName,ready:Boolean(assetFile(index,'normal')),image:imageURL(assetFile(index,'normal'))})), expression: expressionController.state(), hasKey: Boolean(profile.key), history, busy: Boolean(active || testing), providers: PROVIDERS };
+  return { tarotAvailable:config.interactionProfile==='samuel',catAvailable:Boolean(cat?.available&&config.activeCharacter===0),config: { ...config, profiles, characters:undefined }, characterId:config.activeCharacter, slots:config.characters.map((item,index)=>({index,name:item.characterName,ready:Boolean(assetFile(index,'normal')),image:imageURL(assetFile(index,'normal'))})), expression: expressionController.state(), hasKey: Boolean(profile.key), history, busy: Boolean(active || testing), providers: PROVIDERS };
 }
 function assetFile(index,id){
  const custom=characterFiles.asset(index,id);if(custom)return custom;
@@ -47,7 +49,7 @@ function expressionArtwork() {
 function viewState(){const art=expressionArtwork();return {...publicState(),companion:companion?.state(),image:art.images.normal,expressionImages:art.images,expressionOptions:art.options,accessories:art.accessories};}
 function refreshArtwork(){for(const win of [pet,subtitle,chat])if(win&&!win.isDestroyed())win.webContents.send('artwork',viewState());}
 function publishExpression(value) { for (const win of [pet, subtitle]) if (win && !win.isDestroyed()) win.webContents.send('expression', value); }
-function broadcast() { for (const win of [pet, chat, subtitle]) if (win && !win.isDestroyed()) win.webContents.send('state', publicState()); }
+function broadcast() { for(const win of [pet,chat,subtitle])if(win&&!win.isDestroyed())win.setTitle(`${config.characterName} · Desktop-company`); for (const win of [pet, chat, subtitle]) if (win && !win.isDestroyed()) win.webContents.send('state', publicState()); }
 function setPetPosition(x, y) {
   const width = config.size, height = Math.round(config.size * 1.2);
   const area = screen.getDisplayNearestPoint({ x: Math.round(x + width / 2), y: Math.round(y + height / 2) }).workArea;
@@ -82,7 +84,7 @@ function getKey() {
 function persistConfig(next){syncSlot(next);writeJSON(dataFile('settings.json'),next);characterFiles.saveCard(next.activeCharacter,next.characters[next.activeCharacter]);config=next;}
 function store() { persistConfig(config); }
 function historyFile(){return characterFiles.historyFile(config.activeCharacter);}
-function maintainTopmost(){for(const win of [pet,subtitle,chat,cat?.window,companion?.toast])if(win&&!win.isDestroyed()){
+function maintainTopmost(){for(const win of [pet,subtitle,chat,cat?.window,companion?.toast,tarot?.window])if(win&&!win.isDestroyed()){
  win.setAlwaysOnTop(config.alwaysOnTop,config.alwaysOnTop?'screen-saver':'normal');
  if(config.alwaysOnTop&&win.isVisible())win.moveTop();
 }}
@@ -104,7 +106,7 @@ function showChat(settings = false) {
 }
 function petMenu() {
   Menu.buildFromTemplate([
-    { label: '和 Kairos 聊天', click: () => showSubtitle() },
+    { label: `和 ${config.characterName} 聊天`, click: () => showSubtitle() },
     { label: '查看聊天记录', click: () => showChat() },
     { label: '设置 / 关于我 / 记忆', click: () => showChat(true) },
     {label:'角色槽位 / 导入图片',click:()=>showChat(true)},
@@ -113,7 +115,7 @@ function petMenu() {
     {label:'猫猫试用（本地 DLC）',enabled:Boolean(cat?.available&&config.activeCharacter===0&&!active&&!testing),click:()=>enterCat()},
     { label: '显示角色', click: () => {cat?.leave();pet.show();} },
     { label: '暂时隐藏', click: () => {companion?.stop();companion?.control?.hide();cat?.leave();pet.hide(); chat.hide(); subtitle.hide(); } },
-    { type: 'separator' }, { label: '退出 Kairos', click: () => app.quit() }
+    { type: 'separator' }, { label: '退出 Desktop-company', click: () => app.quit() }
   ]).popup();
 }
 function enterCat(){
@@ -127,10 +129,11 @@ function createWindows() {
   const area = screen.getPrimaryDisplay().workArea;
   pet = new BrowserWindow(windowOptions({ width: config.size, height: Math.round(config.size * 1.2), x: area.x + area.width - config.size - 60, y: Math.max(area.y, area.y + area.height - Math.round(config.size * 1.2) - SUBTITLE_HEIGHT - 28), frame: false, transparent: true, thickFrame: false, resizable: false, maximizable: false, skipTaskbar: true, alwaysOnTop: config.alwaysOnTop, show: false }));
   subtitle = new BrowserWindow(windowOptions({ width: SUBTITLE_WIDTH, height: SUBTITLE_HEIGHT, frame: false, transparent: true, thickFrame: false, resizable: false, maximizable: false, skipTaskbar: true, alwaysOnTop: config.alwaysOnTop, show: false }));
-  chat = new BrowserWindow(windowOptions({ width: 440, height: 650, minWidth: 380, minHeight: 500, title: 'Kairos · 聊一会儿', backgroundColor: '#f5f8fb', show: false, autoHideMenuBar: true, alwaysOnTop: config.alwaysOnTop }));
+  chat = new BrowserWindow(windowOptions({ width: 440, height: 650, minWidth: 380, minHeight: 500, title: 'Desktop-company · 聊一会儿', backgroundColor: '#f5f8fb', show: false, autoHideMenuBar: true, alwaysOnTop: config.alwaysOnTop }));
   cat=new CatAddon({folder:path.join(app.isPackaged?path.dirname(app.getPath('exe')):root,'dlc','kairos-cat'),options:windowOptions,secure:secureWindow,onReturn:()=>showSubtitle(false),topmost:()=>config.alwaysOnTop});
   companion=new CompanionAddon({saved:readJSON(dataFile('companion.json'),{}),save:value=>writeJSON(dataFile('companion.json'),value),options:windowOptions,secure:secureWindow,anchor:()=>pet.getBounds(),topmost:()=>config.alwaysOnTop,allowed:()=>!active&&!testing&&!cat.active&&!patActive,onReact:value=>{const id=['undo','oops','game'].includes(value.kind)?'mock':value.kind==='music'?'smile':'smirk';if(expressionArtwork().images[id])expressionController.automatic(id);},onChange:value=>{for(const win of [chat,subtitle])if(win&&!win.isDestroyed())win.webContents.send('companion-state',value);}});
   secureWindow(pet); secureWindow(chat); secureWindow(subtitle);
+  tarot=new TarotAddon({config:()=>config,options:windowOptions,secure:secureWindow,busy:()=>Boolean(active||testing),key:getKey,complete,error:friendlyError,setActive:value=>{active=value;broadcast();},back:()=>imageURL(assetFile(config.activeCharacter,'tarot-back'))||pathToFileURL(path.join(__dirname,'assets','tarot-back.svg')).href});
   subtitle.loadFile(path.join(__dirname, 'subtitle.html'));
   dockSubtitle();
   for (const win of [pet, subtitle]) { win.webContents.setZoomFactor(1); win.webContents.on('zoom-changed', () => win.webContents.setZoomFactor(1)); }
@@ -138,13 +141,13 @@ function createWindows() {
   chat.loadFile(path.join(__dirname, 'index.html'));
   pet.once('ready-to-show', () => {if(process.argv.includes('--cat')&&cat.available&&config.activeCharacter===0)enterCat();else pet.showInactive();if(process.argv.includes('--companion'))companion.open();});
   chat.on('close', event => { if (!app.isQuitting) { event.preventDefault(); chat.hide(); } });
-  chat.once('ready-to-show', () => { if (!config.profiles[config.provider]?.key && !process.argv.some(arg=>['--smoke-test','--cat-smoke-test','--companion-smoke-test','--cat','--companion'].includes(arg))) showChat(true); });
+  chat.once('ready-to-show', () => { if (!config.profiles[config.provider]?.key && !process.argv.some(arg=>['--smoke-test','--cat-smoke-test','--companion-smoke-test','--tarot-smoke-test','--cat','--companion'].includes(arg))) showChat(true); });
   const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'tray.png'));
   tray = new Tray(icon);
-  tray.setToolTip('Kairos Desktop · 点击聊天，右键菜单');
+  tray.setToolTip('Desktop-company · 点击聊天，右键菜单');
   tray.on('click', () => showSubtitle());
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: '显示 Kairos', click: () => {cat.leave();pet.show();} },
+    { label: '显示角色', click: () => {cat.leave();pet.show();} },
     {label:'猫猫试用（本地 DLC）',click:()=>{if(cat.available&&config.activeCharacter===0&&!active&&!testing)enterCat();else showChat(true);}},
     { label: '打开桌面字幕', click: () => showSubtitle() },
     { label: '查看聊天记录', click: () => showChat() },
@@ -158,6 +161,7 @@ function createWindows() {
   if (process.argv.includes('--smoke-test') && process.env.KAIROS_DATA_DIR) runSmokeTest();
   if(process.argv.includes('--cat-smoke-test')&&process.env.KAIROS_DATA_DIR)runCatSmokeTest();
   if(process.argv.includes('--companion-smoke-test')&&process.env.KAIROS_DATA_DIR)runCompanionSmokeTest();
+  if(process.argv.includes('--tarot-smoke-test')&&process.env.KAIROS_DATA_DIR)require('./tarot-smoke.cjs').run({app,pet,chat,subtitle,tarot,readJSON,writeJSON,dataFile,getConfig:()=>config});
 }
 async function runSmokeTest() {
   try {
@@ -258,7 +262,7 @@ async function runSmokeTest() {
     await new Promise(resolve=>setTimeout(resolve,80));
     const wheelImages = await subtitle.webContents.executeJavaScript(`({count:document.querySelectorAll('#wheel-options button').length,loaded:[...document.querySelectorAll('#wheel-options img')].every(img=>img.complete && img.naturalWidth>0)})`);
     expressionChecks.wheelImages = wheelImages;
-    if (wheelImages.count !== 9 || !wheelImages.loaded) errors.push('wheel previews failed');
+    if (wheelImages.count !== 10 || !wheelImages.loaded) errors.push('wheel previews failed');
     fs.writeFileSync(path.join(app.getPath('userData'), 'wheel-preview.png'), (await subtitle.webContents.capturePage()).toPNG());
     await subtitle.webContents.executeJavaScript(`document.querySelector('#wheel-options [data-expression="angry"]').click()`);
     await new Promise(resolve=>setTimeout(resolve,100));
@@ -413,7 +417,7 @@ function handlers() {
     if(active||testing)throw new Error('请等当前请求结束后再切换角色。');
     if(!validSlot(index))throw new Error('请选择有效槽位。');
     if(index===config.activeCharacter)return viewState();
-    companion?.stop();cat?.leave();store();characterFiles.saveHistory(config.activeCharacter,history);
+    tarot?.reset();companion?.stop();cat?.leave();store();characterFiles.saveHistory(config.activeCharacter,history);
     const next=structuredClone(config);activate(next,index);persistConfig(next);
     history=characterFiles.loadHistory(index);
     expressionController.dispose();expressionController=new ExpressionController({manual:config.manualExpression,onChange:publishExpression});
@@ -449,7 +453,7 @@ function handlers() {
     // Fixed filenames only: no paths from the manifest are executed or followed.
     const images=[];for(const id of ASSET_IDS){const file=path.join(folder,'assets',id+'.png');if(fs.existsSync(file)){const image=nativeImage.createFromPath(file);const size=image.getSize();if(fs.statSync(file).size>20*1024*1024||image.isEmpty()||size.width>4096||size.height>4096)throw new Error('素材包中有无效图片。');images.push([id,file]);}}
     for(const [id,file]of images)characterFiles.installImage(index,id,file);
-    config.characterName=card.name.slice(0,80);config.persona=card.persona;store();refreshArtwork();broadcast();return viewState();
+    tarot?.reset();config.characterName=card.name.slice(0,80);config.persona=card.persona;config.interactionProfile=['kairos','samuel','generic'].includes(card.interactionProfile)?card.interactionProfile:/samuel/i.test(card.name)?'samuel':'generic';store();refreshArtwork();broadcast();return viewState();
   });
   ipcMain.handle('accessory',(_,id)=>{
     const item=ACCESSORIES.find(item=>item.id===id);if(!item||!assetFile(config.activeCharacter,id))throw new Error('这个角色还没有对应饰品图片。');
@@ -462,11 +466,11 @@ function handlers() {
     const armSafety=()=>{clearTimeout(patSafetyTimer);patSafetyTimer=setTimeout(()=>{patActive=false;expressionController.endTemporary();},1800);};
     if(value.phase==='start'){
       if(Date.now()-lastPatFinished<1500)return;
-      patActive=true;armSafety();const images=expressionArtwork().images;expressionController.temporary(images.smile?'smile':images.happy?'happy':'normal',0);
+      patActive=true;armSafety();const images=expressionArtwork().images;expressionController.temporary(config.interactionProfile==='samuel'&&images.smile2?'smile2':images.smile?'smile':images.happy?'happy':'normal',0);
     }else if(value.phase==='continue'&&patActive)armSafety();
     else if(value.phase==='end'&&patActive){
       patActive=false;clearTimeout(patSafetyTimer);lastPatFinished=Date.now();
-      const reaction=headpatReaction(value.kind==='rough'?'rough':'gentle');
+      const reaction=headpatReaction(value.kind==='rough'?'rough':'gentle',Math.random,config.interactionProfile);
       expressionController.temporary(expressionArtwork().images[reaction.expression]?reaction.expression:'normal',5000);localLine(reaction.text);
     }else if(value.phase==='cancel'&&patActive){patActive=false;clearTimeout(patSafetyTimer);expressionController.endTemporary();}
   });
@@ -557,7 +561,7 @@ function handlers() {
   });
   ipcMain.handle('data-folder', () => shell.openPath(app.getPath('userData')));
   ipcMain.handle('export', async () => {
-    const result = await dialog.showSaveDialog(chat, { defaultPath: 'Kairos-聊天备份.json', filters: [{ name: 'JSON', extensions: ['json'] }] });
+    const result = await dialog.showSaveDialog(chat, { defaultPath: 'Desktop-company-聊天备份.json', filters: [{ name: 'JSON', extensions: ['json'] }] });
     if (!result.canceled) { writeJSON(result.filePath, { history, memory: config.memory, about: config.about, worldbook: config.worldbook }); return '已导出聊天与记忆（不含密钥）。'; }
     return '已取消导出。';
   });
@@ -574,11 +578,11 @@ function friendlyError(error) {
   if (error.message === 'fetch failed') return '无法连接服务商，请检查网络后重试。';
   return error.message;
 }
-const isolatedSmoke=['--smoke-test','--cat-smoke-test','--companion-smoke-test'].some(arg=>process.argv.includes(arg))&&Boolean(process.env.KAIROS_DATA_DIR);
+const isolatedSmoke=['--smoke-test','--cat-smoke-test','--companion-smoke-test','--tarot-smoke-test'].some(arg=>process.argv.includes(arg))&&Boolean(process.env.KAIROS_DATA_DIR);
 if (!isolatedSmoke && !app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', (_,argv) => {if(pet){if(argv.includes('--companion'))companion.open();else if(argv.includes('--cat')&&cat?.available&&config.activeCharacter===0&&!active&&!testing)enterCat();else showSubtitle();}});
-  app.on('before-quit', () => { app.isQuitting = true;companion?.dispose();cat?.dispose(); clearInterval(dragTimer);clearInterval(topmostTimer);clearTimeout(patSafetyTimer); expressionController?.dispose(); active?.abort(); });
+  app.on('before-quit', () => { app.isQuitting = true;tarot?.reset();companion?.dispose();cat?.dispose(); clearInterval(dragTimer);clearInterval(topmostTimer);clearTimeout(patSafetyTimer); expressionController?.dispose(); active?.abort(); });
   app.whenReady().then(() => {
     config = { ...defaults(), ...readJSON(dataFile('settings.json'), {}) };
     delete config.greetings; delete config.speakGreetings;
@@ -588,5 +592,5 @@ else {
     if (!validExpression(config.manualExpression) || !expressionArtwork().images[config.manualExpression]) config.manualExpression = 'normal';
     expressionController = new ExpressionController({ manual: config.manualExpression, onChange: publishExpression });
     handlers(); createWindows();
-  }).catch(error => {if(isolatedSmoke){writeJSON(dataFile('smoke-result.json'),{error:error.message,stack:error.stack});app.exit(1);}else{dialog.showErrorBox('Kairos 启动失败', error.message);app.quit();}});
+  }).catch(error => {if(isolatedSmoke){writeJSON(dataFile('smoke-result.json'),{error:error.message,stack:error.stack});app.exit(1);}else{dialog.showErrorBox('Desktop-company 启动失败', error.message);app.quit();}});
 }

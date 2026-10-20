@@ -2,7 +2,7 @@ const EXPRESSIONS = [
   { id: 'normal', label: 'Normal' }, { id: 'angry', label: '生气' },
   { id: 'confuse', label: '疑惑' }, { id: 'happy', label: '开心' },
   { id: 'mock', label: '嗤笑' }, { id: 'smirk', label: '坏笑' },
-  { id: 'surprised', label: '惊喜' }, { id: 'unhappy', label: '不悦' }, { id: 'smile', label: '微笑' }
+  { id: 'surprised', label: '惊喜' }, { id: 'unhappy', label: '不悦' }, { id: 'smile', label: '微笑' }, { id: 'smile2', label: '微笑 2' }
 ];
 const validExpression = id => EXPRESSIONS.some(item => item.id === id);
 function parseExpressionReply(raw) {
@@ -14,7 +14,7 @@ function parseExpressionReply(raw) {
   const id = match[1].trim().toLowerCase();
   return { answer, expression: validExpression(id) ? id : 'normal' };
 }
-const EXPRESSION_RULE = `回复结束后，另起一行输出 [[expression:编号]]，编号只能是 normal/angry/confuse/happy/mock/smirk/surprised/unhappy/smile，分别对应正常/生气/疑惑/开心/嗤笑/坏笑/惊喜/不悦/微笑。按角色此刻自己的反应选择，而非机械匹配用户的情绪关键词。日常自然交流可选 normal，不必每轮夸张。控制行不属于台词，不能在台词里解释编号。不再输出其他表情说明。`;
+const EXPRESSION_RULE = `回复结束后，另起一行输出 [[expression:编号]]，编号只能是 normal/angry/confuse/happy/mock/smirk/surprised/unhappy/smile/smile2，分别对应正常/生气/疑惑/开心/嗤笑/坏笑/惊喜/不悦/微笑/闭眼微笑。按角色此刻自己的反应选择，而非机械匹配用户的情绪关键词。日常自然交流可选 normal，不必每轮夸张。控制行不属于台词，不能在台词里解释编号。不再输出其他表情说明。`;
 
 class ExpressionController {
   constructor({ manual = 'normal', onChange = () => {}, now = Date.now, schedule = setTimeout, cancel = clearTimeout } = {}) {

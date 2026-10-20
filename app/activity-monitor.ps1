@@ -27,7 +27,7 @@ while($true){
   $appName='';$lastUndo=$false;$lastWindow=$window
   if($window -ne [IntPtr]::Zero){[uint32]$foregroundId=0;[void][KairosActivity]::GetWindowThreadProcessId($window,[ref]$foregroundId);$targetProcess=$null;try{$targetProcess=[Diagnostics.Process]::GetProcessById($foregroundId);$appName=$targetProcess.ProcessName.ToLowerInvariant()}catch{}finally{if($targetProcess){$targetProcess.Dispose()}}}
  }
- $own=$appName -in @('kairosdesktop','electron')
+ $own=$appName -in @('desktop-company','kairosdesktop','electron')
  # Only Ctrl+Z state in known creative applications is sampled. No text or other keys are recorded.
  $undoDown=$detectUndo -and ($appName -match $drawPattern) -and [KairosActivity]::UndoDown()
  $undo=$undoDown -and -not $lastUndo;$lastUndo=$undoDown

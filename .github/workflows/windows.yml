@@ -19,5 +19,5 @@ jobs:
       - run: npm run package
       - uses: actions/upload-artifact@v4
         with:
-          name: KairosDesktop-Windows
-          path: dist/v*/KairosDesktop-win32-x64/
+          name: Desktop-company-Windows
+          path: dist/v*/Desktop-company-win32-x64/

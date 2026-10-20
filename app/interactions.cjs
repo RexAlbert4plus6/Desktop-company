@@ -11,7 +11,10 @@ const ACCESSORIES = [
  {id:'sweater',label:'毛衣',lines:['It’s definitely a lot warmer.','This color is too soft—it just doesn’t suit me. I’m more of a cool type...','Don’t say things like "very cute."']}
 ];
 function sample(items,random=Math.random) { return items[Math.min(items.length-1,Math.floor(random()*items.length))]; }
-function headpatReaction(kind,random=Math.random) {
+const SAMUEL_GENTLE=[['smile','Hey—what’s wrong?'],['smile','If you’re not feeling your best, I can stay with you a while longer.'],['smirk','Mm—you’ve made a mess of my hair.'],['smile2','You’re being very gentle with me today.'],['smirk','Do you need my help with something?']];
+const SAMUEL_ROUGH=[['surprised','Hey—easy. What’s wrong? Are you not feeling well?'],['unhappy','It’s all right—you don’t have to be careful with me.'],['unhappy','I’ll need a little while to tidy this up... but still...']];
+function headpatReaction(kind,random=Math.random,profile='kairos') {
+ if(profile==='samuel'){const [expression,text]=sample(kind==='rough'?SAMUEL_ROUGH:SAMUEL_GENTLE,random);return {expression,text};}
  const pool=kind==='rough' ? (random()<0.01 ? RARE : ROUGH) : GENTLE;
  const [expression,text]=sample(pool,random); return {expression,text};
 }

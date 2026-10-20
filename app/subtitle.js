@@ -3,7 +3,7 @@ let state, busy = false, sending = false, previousLength = null, timeline = [], 
 let expressionOptions = [], expressionImages = {}, expression = {id:'normal',locked:false};
 let previousCharacter=null,accessories=[],drafts={};
 function closeAccessories(){$('accessory-panel').hidden=true;}
-function renderAccessories(){const list=$('accessory-options');list.replaceChildren();for(const item of accessories){const button=document.createElement('button');button.type='button';button.dataset.accessory=item.id;button.disabled=!item.image;button.setAttribute('aria-pressed',String(item.enabled));button.textContent=(item.enabled?'✓ ':'')+item.label;button.onclick=async()=>{try{const value=await window.kairos.toggleAccessory(item.id);receiveArtwork(value);closeAccessories();}catch(error){$('notice').textContent=errorText(error);}};list.append(button);}}
+function renderAccessories(){const list=$('accessory-options');list.replaceChildren();for(const item of accessories){const button=document.createElement('button');button.type='button';button.dataset.accessory=item.id;button.disabled=!item.image;button.setAttribute('aria-pressed',String(item.enabled));button.textContent=(item.enabled?'✓ ':'')+item.label;button.onclick=async()=>{try{const value=await window.kairos.toggleAccessory(item.id);receiveArtwork(value);closeAccessories();}catch(error){$('notice').textContent=errorText(error);}};list.append(button);}if(state?.tarotAvailable){const button=document.createElement('button');button.id='draw-card';button.textContent='Draw A Card';button.disabled=busy;button.onclick=async()=>{try{await window.kairos.tarotOpen();closeAccessories();}catch(e){$('notice').textContent=errorText(e);}};list.append(button);}}
 function receiveArtwork(value){expressionOptions=value.expressionOptions;expressionImages=value.expressionImages;accessories=value.accessories||[];receive(value);createWheel();renderAccessories();}
 $('accessory-toggle').onclick=()=>{closeWheel();$('accessory-panel').hidden=!$('accessory-panel').hidden;};
 $('accessory-close').onclick=closeAccessories;
@@ -67,8 +67,8 @@ function renderBubbles() {
 }
 function setBusy(value) { busy = value; $('send').disabled = value; $('summarize').disabled = value; $('cancel').hidden = !value; }
 function receive(value) {
-  if(previousCharacter!==value.characterId){if(previousCharacter!==null)drafts[previousCharacter]=$('input').value;$('input').value=drafts[value.characterId]||'';previousLength=null;timeline=[];pendingText=null;previousCharacter=value.characterId;}
-  state = {...state,...value}; setBusy(value.busy);document.querySelector('.toolbar span').textContent=value.config.characterName||'角色';
+  if(previousCharacter!==value.characterId){if(previousCharacter!==null)drafts[previousCharacter]=$('input').value;$('input').value=drafts[value.characterId]||'';previousLength=null;timeline=[];pendingText=null;previousCharacter=value.characterId;$('notice').textContent='';}
+  state = {...state,...value}; setBusy(value.busy);$('input').placeholder=`和 ${value.config.characterName||'角色'} 说点什么…`;document.title=`${value.config.characterName} · Desktop-company`;renderAccessories();document.querySelector('.toolbar span').textContent=value.config.characterName||'角色';
   $('cat-toggle').hidden=!value.catAvailable;$('cat-toggle').disabled=value.busy;
   if (value.expression) updateExpression(value.expression);
   if (previousLength === null || value.history.length < previousLength) { timeline = value.history.slice(-3); pendingText = null; }
@@ -89,7 +89,7 @@ window.kairos.onGreeting(value => {
 $('composer').onsubmit = async event => {
   event.preventDefault(); const text = $('input').value.trim(); if (!text || busy || sending) return;
   if (!state?.hasKey) { window.kairos.openSettings(); $('notice').textContent = '先在设置中填写 API 密钥。'; return; }
-  sending = true; pendingText = text; setBusy(true); renderBubbles(); $('notice').textContent = 'Kairos 正在回复…';
+  sending = true; pendingText = text; setBusy(true); renderBubbles(); $('notice').textContent = `${state.config.characterName} 正在回复…`;
   try { const result = await window.kairos.send(text); receive({...state,history:result.history,busy:false}); $('input').value = ''; $('notice').textContent = ''; }
   catch(error) { pendingText = null; renderBubbles(); $('notice').textContent = errorText(error); }
   finally { sending = false; setBusy(false); $('input').focus(); }

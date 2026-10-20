@@ -13,7 +13,7 @@ test('reply metadata is stripped, unknown/missing codes safely use normal', () =
   assert.deepEqual(parseExpressionReply('普通回复'),{answer:'普通回复',expression:'normal'});
   assert.throws(()=>parseExpressionReply('[[expression:happy]]'),/没有台词/);
   assert.equal(parseExpressionReply('You typed [[expression:happy]], right?').expression,'normal');
-  assert.equal(EXPRESSIONS.length,9);
+  assert.equal(EXPRESSIONS.length,10);
 });
 test('automatic expressions expire after five seconds and new replies replace old timers', () => {
   const time=clock();const controller=new ExpressionController({...time});

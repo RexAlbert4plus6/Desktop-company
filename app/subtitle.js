@@ -68,7 +68,7 @@ function renderBubbles() {
 function setBusy(value) { busy = value; $('send').disabled = value; $('summarize').disabled = value; $('cancel').hidden = !value; }
 function receive(value) {
   if(previousCharacter!==value.characterId){if(previousCharacter!==null)drafts[previousCharacter]=$('input').value;$('input').value=drafts[value.characterId]||'';previousLength=null;timeline=[];pendingText=null;previousCharacter=value.characterId;$('notice').textContent='';}
-  state = {...state,...value}; setBusy(value.busy);$('input').placeholder=`和 ${value.config.characterName||'角色'} 说点什么…`;document.title=`${value.config.characterName} · Desktop-company`;renderAccessories();document.querySelector('.toolbar span').textContent=value.config.characterName||'角色';
+  state = {...state,...value}; setBusy(value.busy);document.querySelector('.desktop-chat').style.height=`${value.subtitleChatHeight||300}px`;$('input').placeholder=`和 ${value.config.characterName||'角色'} 说点什么…`;document.title=`${value.config.characterName} · Desktop-company`;renderAccessories();document.querySelector('.toolbar span').textContent=value.config.characterName||'角色';
   $('cat-toggle').hidden=!value.catAvailable;$('cat-toggle').disabled=value.busy;
   if (value.expression) updateExpression(value.expression);
   if (previousLength === null || value.history.length < previousLength) { timeline = value.history.slice(-3); pendingText = null; }

@@ -1,5 +1,7 @@
 # Desktop-company
 
+0.9.0 将塔罗改为角色下方三张牌，点击旋转两圈后由 Samuel 在聊天气泡解读；增加本机角色登记恢复，保留原聊天与素材。
+
 0.8.0 修复角色切换后的名字显示，支持 Samuel 独立摸头反馈、时段问候和 [Draw A Card](docs/tarot.md)。程序与仓库统一更名 Desktop-company。更新保留原数据目录和所有角色聊天。
 
 0.7.0 加入手动开启的[本地陪伴模式](docs/companion.md)：识别软件类型、定时固定吐槽、连续撤回反馈，共用冷却和每日次数限额，零 token。
@@ -69,7 +71,7 @@ npm start
 npm run package
 ```
 
-输出位于 `dist/v0.8.0/Desktop-company-win32-x64`。请保留整个文件夹，不要单独移动 exe。公开构建使用占位图，可在设置中导入自己的角色。仓库包含 GitHub Actions Windows 构建配置。
+输出位于 `dist/v0.9.0/Desktop-company-win32-x64`。请保留整个文件夹，不要单独移动 exe。公开构建使用占位图，可在设置中导入自己的角色。仓库包含 GitHub Actions Windows 构建配置。
 
 `npm run source` 按白名单生成 `release/source` 和哈希清单，供审查与发布。原型暂未提供代码签名或自动更新。
 

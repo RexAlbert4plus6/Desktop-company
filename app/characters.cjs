@@ -15,11 +15,18 @@ function activate(config,index){
  for(const field of FIELDS)config[field]=structuredClone(config.characters[index][field]);
  return config;
 }
-function migrateCharacters(config){
- if(!Array.isArray(config.characters)||config.characters.length!==4){
-  config.characters=Array.from({length:4},(_,index)=>({characterName:index===0?'Kairos Asher':`角色 ${index+1}`,persona:index===0?config.persona:'请填写这个角色的身份、性格和说话方式。你与 Creator 是平等、熟悉的朋友。',memory:index===0?config.memory:'',summaryCursor:index===0?config.summaryCursor:0,manualExpression:index===0?config.manualExpression:'normal',accessories:{ears:false,scarf:false,sweater:false},greetingGroups:index===0?structuredClone(config.greetingGroups):{morning:[],midday:[],night:[],random:['我在，Creator。']},lastGreetingAt:0,lastConversationAt:0}));
-  config.activeCharacter=0;
- }
+function migrateCharacters(config,files){
+ const old=Array.isArray(config.characters)?config.characters:[];
+ const legacyIndex=validSlot(config.activeCharacter)?config.activeCharacter:0;
+ config.characters=Array.from({length:4},(_,index)=>{
+  const legacy=!old.length&&index===legacyIndex;
+  const base={characterName:legacy?(config.characterName||'Kairos Asher'):index===0?'Kairos Asher':`角色 ${index+1}`,persona:legacy?config.persona:'请填写这个角色的身份、性格和说话方式。你与 Creator 是平等、熟悉的朋友。',memory:legacy?config.memory:'',summaryCursor:legacy?config.summaryCursor:0,manualExpression:legacy?config.manualExpression:'normal',accessories:{ears:false,scarf:false,sweater:false},greetingGroups:legacy?structuredClone(config.greetingGroups):{morning:[],midday:[],night:[],random:['我在，Creator。']},lastGreetingAt:0,lastConversationAt:0};
+  const present=old[index];
+  if(present&&typeof present.characterName==='string'&&typeof present.persona==='string'&&present.persona.trim()&&!(/^角色 [1-4]$/.test(present.characterName)&&present.persona===base.persona))return {...base,...present};
+  const card=files?.readCard(index);
+  if(card)return {...base,characterName:card.name,persona:card.persona,interactionProfile:card.interactionProfile,greetingGroups:card.greetingGroups||(/samuel/i.test(card.name)?require('./samuel-greetings.cjs'):base.greetingGroups)};
+  return base;
+ });
  for(const [index,slot] of config.characters.entries())if(!['kairos','samuel','generic'].includes(slot.interactionProfile))slot.interactionProfile=/samuel/i.test(slot.characterName)?'samuel':index===0?'kairos':'generic';
  if(!validSlot(config.activeCharacter))config.activeCharacter=0;
  return activate(config,config.activeCharacter);
@@ -27,6 +34,7 @@ function migrateCharacters(config){
 class CharacterFiles {
  constructor(dataDir,bundledRoot){this.root=path.join(dataDir,'character');this.bundledRoot=bundledRoot;fs.mkdirSync(this.root,{recursive:true});}
  folder(index){if(!validSlot(index))throw new Error('角色槽位无效。');return path.join(this.root,`slot-${index+1}`);}
+ readCard(index){for(const folder of [this.folder(index),path.join(this.bundledRoot,`slot-${index+1}`)]){try{const card=readJSON(path.join(folder,'character.json'),null);if(card&&typeof card.name==='string'&&typeof card.persona==='string'&&card.persona.trim()&&card.persona.length<=50000)return card;}catch{ /* Retain a damaged manifest for manual recovery, without resetting other cards. */ }}return null;}
  asset(index,id){
   if(!ASSET_IDS.includes(id))throw new Error('图片类型无效。');
   for(const file of [path.join(this.folder(index),'assets',id+'.png'),path.join(this.bundledRoot,`slot-${index+1}`,'assets',id+'.png')])if(fs.existsSync(file))return file;

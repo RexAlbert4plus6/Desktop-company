@@ -1,5 +1,10 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const os=require('node:os');const path=require('node:path');
 const {migrateCharacters,syncSlot,activate,CharacterFiles}=require('../app/characters.cjs');
+test('partial character registration recovers a card without resetting existing slots or memory',()=>{
+ const config={activeCharacter:2,characters:[{characterName:'Kairos',persona:'first',memory:'keep first'},null,{characterName:'Custom',persona:'third',memory:'keep third'}],worldbook:'shared'};
+ migrateCharacters(config,{readCard:index=>index===1?{name:'Samuel Valemont',persona:'original Samuel',interactionProfile:'samuel'}:null});
+ assert.equal(config.characters.length,4);assert.equal(config.characters[1].characterName,'Samuel Valemont');assert.equal(config.characters[0].memory,'keep first');assert.equal(config.memory,'keep third');assert.equal(config.activeCharacter,2);assert.equal(config.worldbook,'shared');
+});
 test('four slots migrate legacy persona and isolate memory while keeping worldbook and user info',()=>{
  const config={persona:'original persona',memory:'original memory',summaryCursor:2,manualExpression:'normal',greetingGroups:{random:['hi']},worldbook:'shared world',about:'shared creator'};
  migrateCharacters(config);assert.equal(config.characters.length,4);assert.equal(config.persona,'original persona');

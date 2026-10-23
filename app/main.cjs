@@ -26,10 +26,12 @@ function defaults() {
   const personaFile = path.join(privateFolder(), 'persona.txt');
   return { provider: 'deepseek', ...PROVIDERS.deepseek, about: '', memory: '', worldbook: '', summaryCursor: 0, manualExpression: 'normal', greetingCooldownMinutes:15, greetingGroups: structuredClone(DEFAULT_GREETINGS), persona: fs.existsSync(personaFile) ? fs.readFileSync(personaFile, 'utf8') : SAMPLE_PERSONA, size: 270, alwaysOnTop: true, profiles: {} };
 }
+function displaySize(){if(!tarot?.shown)return config.size;const area=screen.getDisplayMatching(pet.getBounds()).workArea;return Math.min(config.size,Math.max(120,Math.floor((area.height-282)/(1.2+4/7))));}
+function subtitleLayout(){if(!tarot?.shown)return {width:SUBTITLE_WIDTH,height:SUBTITLE_HEIGHT,chatHeight:SUBTITLE_HEIGHT};const size=displaySize(),area=screen.getDisplayMatching(pet.getBounds()).workArea;const cards=Math.ceil(size/3*12/7)+72,chatHeight=Math.max(190,Math.min(SUBTITLE_HEIGHT,area.height-Math.round(size*1.2)-cards-16));return {width:Math.max(SUBTITLE_WIDTH,size+24),height:cards+chatHeight,chatHeight};}
 function publicState() {
   const profile = config.profiles[config.provider] || {};
   const profiles = Object.fromEntries(Object.entries(config.profiles).map(([name, value]) => [name, { model: value.model, hasKey: Boolean(value.key) }]));
-  return { tarotAvailable:config.interactionProfile==='samuel',catAvailable:Boolean(cat?.available&&config.activeCharacter===0),config: { ...config, profiles, characters:undefined }, characterId:config.activeCharacter, slots:config.characters.map((item,index)=>({index,name:item.characterName,ready:Boolean(assetFile(index,'normal')),image:imageURL(assetFile(index,'normal'))})), expression: expressionController.state(), hasKey: Boolean(profile.key), history, busy: Boolean(active || testing), providers: PROVIDERS };
+  return { displaySize:displaySize(),subtitleChatHeight:subtitleLayout().chatHeight,tarotAvailable:config.interactionProfile==='samuel',catAvailable:Boolean(cat?.available&&config.activeCharacter===0),config: { ...config, profiles, characters:undefined }, characterId:config.activeCharacter, slots:config.characters.map((item,index)=>({index,name:item.characterName,ready:Boolean(assetFile(index,'normal')),image:imageURL(assetFile(index,'normal'))})), expression: expressionController.state(), hasKey: Boolean(profile.key), history, busy: Boolean(active || testing), providers: PROVIDERS };
 }
 function assetFile(index,id){
  const custom=characterFiles.asset(index,id);if(custom)return custom;
@@ -51,16 +53,18 @@ function refreshArtwork(){for(const win of [pet,subtitle,chat])if(win&&!win.isDe
 function publishExpression(value) { for (const win of [pet, subtitle]) if (win && !win.isDestroyed()) win.webContents.send('expression', value); }
 function broadcast() { for(const win of [pet,chat,subtitle])if(win&&!win.isDestroyed())win.setTitle(`${config.characterName} · Desktop-company`); for (const win of [pet, chat, subtitle]) if (win && !win.isDestroyed()) win.webContents.send('state', publicState()); }
 function setPetPosition(x, y) {
-  const width = config.size, height = Math.round(config.size * 1.2);
+  const width = displaySize(), height = Math.round(width * 1.2);
   const area = screen.getDisplayNearestPoint({ x: Math.round(x + width / 2), y: Math.round(y + height / 2) }).workArea;
-  const reserve = subtitle?.isVisible() ? SUBTITLE_HEIGHT + 4 : 0;
+  const reserve = subtitle?.isVisible() ? subtitleLayout().height + 4 : 0;
   pet.setBounds({ x: Math.round(Math.max(area.x, Math.min(x, area.x + area.width - width))), y: Math.round(Math.max(area.y, Math.min(y, area.y + area.height - height - reserve))), width, height });
   dockSubtitle();
+  // Windows can round transparent window bounds at fractional display scales.
+  if(tarot?.shown&&subtitle.isVisible()){const bounds=subtitle.getBounds(),overflow=bounds.y+bounds.height-area.y-area.height;if(overflow>0){const p=pet.getBounds();pet.setPosition(p.x,Math.max(area.y,p.y-Math.ceil(overflow)-4));dockSubtitle();}}
 }
 function dockSubtitle() {
   if (!subtitle) return;
-  const p = pet.getBounds(), area = screen.getDisplayMatching(p).workArea;
-  subtitle.setBounds({ x: Math.round(Math.max(area.x, Math.min(p.x + (p.width - SUBTITLE_WIDTH) / 2, area.x + area.width - SUBTITLE_WIDTH))), y: p.y + p.height + 4, width: SUBTITLE_WIDTH, height: SUBTITLE_HEIGHT });
+  const p = pet.getBounds(), area = screen.getDisplayMatching(p).workArea,layout=subtitleLayout();
+  subtitle.setBounds({ x: Math.round(Math.max(area.x, Math.min(p.x + (p.width - layout.width) / 2, area.x + area.width - layout.width))), y: p.y + p.height + 4, width: layout.width, height: layout.height });
 }
 function showSubtitle(greeting = true,focus = true) {
   cat?.leave();
@@ -133,7 +137,7 @@ function createWindows() {
   cat=new CatAddon({folder:path.join(app.isPackaged?path.dirname(app.getPath('exe')):root,'dlc','kairos-cat'),options:windowOptions,secure:secureWindow,onReturn:()=>showSubtitle(false),topmost:()=>config.alwaysOnTop});
   companion=new CompanionAddon({saved:readJSON(dataFile('companion.json'),{}),save:value=>writeJSON(dataFile('companion.json'),value),options:windowOptions,secure:secureWindow,anchor:()=>pet.getBounds(),topmost:()=>config.alwaysOnTop,allowed:()=>!active&&!testing&&!cat.active&&!patActive,onReact:value=>{const id=['undo','oops','game'].includes(value.kind)?'mock':value.kind==='music'?'smile':'smirk';if(expressionArtwork().images[id])expressionController.automatic(id);},onChange:value=>{for(const win of [chat,subtitle])if(win&&!win.isDestroyed())win.webContents.send('companion-state',value);}});
   secureWindow(pet); secureWindow(chat); secureWindow(subtitle);
-  tarot=new TarotAddon({config:()=>config,options:windowOptions,secure:secureWindow,busy:()=>Boolean(active||testing),key:getKey,complete,error:friendlyError,setActive:value=>{active=value;broadcast();},back:()=>imageURL(assetFile(config.activeCharacter,'tarot-back'))||pathToFileURL(path.join(__dirname,'assets','tarot-back.svg')).href});
+  tarot=new TarotAddon({config:()=>config,surface:()=>subtitle,size:displaySize,onOpen:()=>{showSubtitle(false);broadcast();},onLayout:()=>{if(pet&&!pet.isDestroyed()){const p=pet.getBounds();setPetPosition(p.x,p.y);if(!app.isQuitting)broadcast();}},onResult:({answer,card,question})=>{const time=new Date().toISOString();const prompt=`塔罗抽牌：${card.name}（${card.reversed?'逆位':'正位'}）。${question||'请为我解读。'}`;const next=[...history,{role:'user',content:prompt,time,type:'tarot'},{role:'assistant',content:answer,time,type:'tarot'}];writeJSON(historyFile(),next);history=next;config.lastConversationAt=Date.now();store();expressionController.automatic(expressionArtwork().images.smile?'smile':'normal');broadcast();},busy:()=>Boolean(active||testing),key:getKey,complete,error:friendlyError,setActive:value=>{active=value;broadcast();},back:()=>imageURL(assetFile(config.activeCharacter,'tarot-back'))||pathToFileURL(path.join(__dirname,'assets','tarot-back.svg')).href});
   subtitle.loadFile(path.join(__dirname, 'subtitle.html'));
   dockSubtitle();
   for (const win of [pet, subtitle]) { win.webContents.setZoomFactor(1); win.webContents.on('zoom-changed', () => win.webContents.setZoomFactor(1)); }
@@ -501,6 +505,7 @@ function handlers() {
     setPetPosition(p.x, p.y);
     maintainTopmost();
     broadcast();
+    tarot?.publish();
     return publicState();
   });
   ipcMain.handle('test', async () => {
@@ -527,8 +532,8 @@ function handlers() {
     finally { active = null; broadcast(); }
   });
   ipcMain.handle('cancel', () => active?.abort());
-  ipcMain.handle('toggle-chat', () => subtitle.isVisible()?subtitle.hide():showSubtitle());
-  ipcMain.handle('hide-chat', () => subtitle.hide());
+  ipcMain.handle('toggle-chat', () => {if(subtitle.isVisible()){tarot?.close();subtitle.hide();}else showSubtitle();});
+  ipcMain.handle('hide-chat', () => {tarot?.close();subtitle.hide();});
   ipcMain.handle('open-settings', () => showChat(true));
   ipcMain.handle('menu', petMenu);
   ipcMain.on('drag', (event, phase) => {
@@ -587,7 +592,7 @@ else {
     config = { ...defaults(), ...readJSON(dataFile('settings.json'), {}) };
     delete config.greetings; delete config.speakGreetings;
     characterFiles=new CharacterFiles(app.getPath('userData'),path.join(app.isPackaged?path.dirname(app.getPath('exe')):root,'character'));
-    migrateCharacters(config);
+    migrateCharacters(config,characterFiles);
     history = characterFiles.loadHistory(config.activeCharacter,dataFile('chat.json'));
     if (!validExpression(config.manualExpression) || !expressionArtwork().images[config.manualExpression]) config.manualExpression = 'normal';
     expressionController = new ExpressionController({ manual: config.manualExpression, onChange: publishExpression });

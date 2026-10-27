@@ -6,7 +6,7 @@ const { PROVIDERS, SAMPLE_PERSONA, readJSON, writeJSON, buildMessages, complete,
 const { DEFAULT_GREETINGS, pickGreeting } = require('./greetings.cjs');
 const { EXPRESSIONS, validExpression, parseExpressionReply, ExpressionController } = require('./expressions.cjs');
 const {ACCESSORIES,headpatReaction,greetingAllowed,sample}=require('./interactions.cjs');
-const {ASSET_IDS,validSlot,syncSlot,activate,migrateCharacters,CharacterFiles}=require('./characters.cjs');
+const {ASSET_IDS,validSlot,syncSlot,activate,migrateCharacters,CharacterFiles,validGreetings,repairSlot}=require('./characters.cjs');
 const {CatAddon}=require('./cat-addon.cjs');
 const {CompanionAddon}=require('./companion-addon.cjs');
 const {TarotAddon}=require('./tarot-addon.cjs');
@@ -85,7 +85,7 @@ function getKey() {
   try { return safeStorage.decryptString(Buffer.from(encrypted, 'base64')); }
   catch { throw new Error('无法解密保存的密钥，请在设置中重新填写。'); }
 }
-function persistConfig(next){syncSlot(next);writeJSON(dataFile('settings.json'),next);characterFiles.saveCard(next.activeCharacter,next.characters[next.activeCharacter]);config=next;}
+function persistConfig(next){syncSlot(next);characterFiles.saveCard(next.activeCharacter,next.characters[next.activeCharacter]);writeJSON(dataFile('settings.json'),next);config=next;}
 function store() { persistConfig(config); }
 function historyFile(){return characterFiles.historyFile(config.activeCharacter);}
 function maintainTopmost(){for(const win of [pet,subtitle,chat,cat?.window,companion?.toast,tarot?.window])if(win&&!win.isDestroyed()){
@@ -166,6 +166,7 @@ function createWindows() {
   if(process.argv.includes('--cat-smoke-test')&&process.env.KAIROS_DATA_DIR)runCatSmokeTest();
   if(process.argv.includes('--companion-smoke-test')&&process.env.KAIROS_DATA_DIR)runCompanionSmokeTest();
   if(process.argv.includes('--tarot-smoke-test')&&process.env.KAIROS_DATA_DIR)require('./tarot-smoke.cjs').run({app,pet,chat,subtitle,tarot,readJSON,writeJSON,dataFile,getConfig:()=>config});
+  if(process.argv.includes('--verify-character'))require('./installation-check.cjs').run({app,pet,chat,subtitle,writeJSON,dataFile});
 }
 async function runSmokeTest() {
   try {
@@ -457,7 +458,10 @@ function handlers() {
     // Fixed filenames only: no paths from the manifest are executed or followed.
     const images=[];for(const id of ASSET_IDS){const file=path.join(folder,'assets',id+'.png');if(fs.existsSync(file)){const image=nativeImage.createFromPath(file);const size=image.getSize();if(fs.statSync(file).size>20*1024*1024||image.isEmpty()||size.width>4096||size.height>4096)throw new Error('素材包中有无效图片。');images.push([id,file]);}}
     for(const [id,file]of images)characterFiles.installImage(index,id,file);
-    tarot?.reset();config.characterName=card.name.slice(0,80);config.persona=card.persona;config.interactionProfile=['kairos','samuel','generic'].includes(card.interactionProfile)?card.interactionProfile:/samuel/i.test(card.name)?'samuel':'generic';store();refreshArtwork();broadcast();return viewState();
+    if(card.greetingGroups!==undefined&&!validGreetings(card.greetingGroups))throw Error('素材包中的问候语格式不正确。');
+    tarot?.reset();config.characterName=card.name.slice(0,80);config.persona=card.persona;config.interactionProfile=['kairos','samuel','generic'].includes(card.interactionProfile)?card.interactionProfile:/samuel/i.test(card.name)?'samuel':'generic';
+    config.greetingGroups=repairSlot({characterName:config.characterName,persona:config.persona,interactionProfile:config.interactionProfile,greetingGroups:card.greetingGroups},card,index).greetingGroups;
+    store();refreshArtwork();broadcast();return viewState();
   });
   ipcMain.handle('accessory',(_,id)=>{
     const item=ACCESSORIES.find(item=>item.id===id);if(!item||!assetFile(config.activeCharacter,id))throw new Error('这个角色还没有对应饰品图片。');
@@ -480,6 +484,7 @@ function handlers() {
   });
   ipcMain.handle('save', (_, value) => {
     if (active || testing) throw new Error('请等当前请求结束后再保存设置。');
+    if(value?.characterId!==undefined&&value.characterId!==config.activeCharacter)throw Error('角色已经切换，这份旧表单未保存。请重新打开当前角色的设置。');
     if (!value || !PROVIDERS[value.provider]) throw new Error('请选择有效的服务商。');
     for (const field of ['model', 'about', 'memory', 'persona', 'worldbook']) if (typeof value[field] !== 'string' || value[field].length > 50000) throw new Error('设置内容过长或格式不正确。');
     for (const group of Object.keys(DEFAULT_GREETINGS)) if (!Array.isArray(value.greetingGroups?.[group]) || value.greetingGroups[group].length > 50 || value.greetingGroups[group].some(text => typeof text !== 'string' || text.length > 1000)) throw new Error('问候语格式不正确。');
@@ -593,6 +598,9 @@ else {
     delete config.greetings; delete config.speakGreetings;
     characterFiles=new CharacterFiles(app.getPath('userData'),path.join(app.isPackaged?path.dirname(app.getPath('exe')):root,'character'));
     migrateCharacters(config,characterFiles);
+    // Persist repaired registration immediately; keep independent complete card snapshots.
+    writeJSON(dataFile('settings.json'),config);
+    for(let index=0;index<4;index++)characterFiles.saveCard(index,config.characters[index]);
     history = characterFiles.loadHistory(config.activeCharacter,dataFile('chat.json'));
     if (!validExpression(config.manualExpression) || !expressionArtwork().images[config.manualExpression]) config.manualExpression = 'normal';
     expressionController = new ExpressionController({ manual: config.manualExpression, onChange: publishExpression });

@@ -1,5 +1,5 @@
 const $ = id => document.getElementById(id);
-let state, busy = false, toastTimer;
+let state, busy = false, toastTimer, switching=false;
 function errorText(error) { return error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); }
 function toast(text) { $('toast').textContent = text; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').hidden = true, 6500); }
 function showSettings(show) { $('settings').hidden = !show; $('conversation').hidden = show; $('settings-toggle').textContent = show ? '聊天' : '设置'; }
@@ -27,12 +27,14 @@ function fill() {
   for (const field of ['provider','base','model','about','memory','persona','worldbook','size','characterName','greetingCooldownMinutes']) $(field).value = state.config[field];
   renderCharacters();
   for (const group of ['morning','midday','night','random']) $(`greeting-${group}`).value = state.config.greetingGroups[group].join('\n');
+  const greetingCount=Object.values(state.config.greetingGroups).reduce((sum,lines)=>sum+lines.length,0);
+  $('profile-status').textContent=`人设已载入：${state.config.persona.length.toLocaleString()} 字 · 固定问候：${greetingCount} 条`;
   $('alwaysOnTop').checked = state.config.alwaysOnTop;
   $('apiKey').value = '';
   $('key-note').textContent = state.hasKey ? '这个服务商已有密钥。留空保留；填写新密钥则替换。' : '这个服务商还没有保存密钥。';
 }
 async function save() {
-  const value = {};
+  const value = {characterId:state.characterId};
   for (const field of ['provider','model','about','memory','persona','worldbook','size','apiKey','characterName','greetingCooldownMinutes']) value[field] = $(field).value;
   value.greetingGroups = Object.fromEntries(['morning','midday','night','random'].map(group => [group, $(`greeting-${group}`).value.split('\n').map(text=>text.trim()).filter(Boolean)]));
   value.alwaysOnTop = $('alwaysOnTop').checked;
@@ -40,6 +42,8 @@ async function save() {
 }
 function setBusy(value) { busy = value; $('send').disabled = value; $('cancel').hidden = !value; }
 $('settings-toggle').onclick = () => showSettings($('settings').hidden);
+$('view-persona').onclick=()=>{const section=$('persona').closest('details');section.open=true;section.scrollIntoView({behavior:'smooth',block:'start'});};
+$('view-greetings').onclick=()=>{const section=$('greeting-morning').closest('details');section.open=true;section.scrollIntoView({behavior:'smooth',block:'start'});};
 $('back').onclick = () => showSettings(false);
 $('settings-form').onsubmit = async event => { event.preventDefault(); try { await save(); toast('已保存。'); } catch (e) { toast(errorText(e)); } };
 $('provider').onchange = () => {
@@ -86,7 +90,7 @@ function renderCharacters(){
  const list=$('character-slots');list.replaceChildren();
  for(const slot of state.slots){const button=document.createElement('button');button.type='button';button.className='slot-card'+(slot.index===state.characterId?' selected':'');
   if(slot.image){const image=document.createElement('img');image.src=slot.image;image.alt='';button.append(image);}
-  const label=document.createElement('span');label.textContent=`${slot.index+1} · ${slot.name}`;button.append(label);button.onclick=async()=>{try{await save();const value=await window.kairos.switchCharacter(slot.index);state={...state,...value};fill();renderHistory();toast('已切换角色，世界书和用户信息保持不变。');}catch(e){toast(errorText(e));}};list.append(button);}
+  const label=document.createElement('span');label.textContent=`${slot.index+1} · ${slot.name}`;button.append(label);button.onclick=async()=>{if(switching)return;switching=true;try{await save();const value=await window.kairos.switchCharacter(slot.index);state={...state,...value};fill();renderHistory();toast('已切换角色，世界书和用户信息保持不变。');}catch(e){toast(errorText(e));}finally{switching=false;}};list.append(button);}
  const images=$('character-images');images.replaceChildren();
  for(const [id,label]of imageFields){const button=document.createElement('button');button.type='button';button.className='image-drop';button.dataset.asset=id;button.setAttribute('aria-label',`导入 ${label}`);
   if(state.expressionImages?.[id]){const image=document.createElement('img');image.src=state.expressionImages[id];image.alt='';button.append(image);}

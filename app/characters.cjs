@@ -3,6 +3,18 @@ const path=require('node:path');
 const {readJSON,writeJSON}=require('./core.cjs');
 const FIELDS=['characterName','persona','memory','summaryCursor','manualExpression','accessories','greetingGroups','lastGreetingAt','lastConversationAt','interactionProfile'];
 const ASSET_IDS=['normal','blink-half','blink-closed','happy','unhappy','angry','smile','smile2','surprised','confuse','mock','smirk','ears','scarf','sweater','tarot-back'];
+const PLACEHOLDER='请填写这个角色的身份、性格和说话方式。你与 Creator 是平等、熟悉的朋友。';
+const GROUPS=['morning','midday','night','random'];
+function validGreetings(value){return value&&GROUPS.every(group=>Array.isArray(value[group])&&value[group].length<=50&&value[group].every(line=>typeof line==='string'&&line.length<=1000));}
+function cardDocument(slot){return {version:2,name:slot.characterName,persona:slot.persona,interactionProfile:slot.interactionProfile,greetingGroups:structuredClone(slot.greetingGroups)};}
+function repairSlot(slot,card,index){
+ const same=card&&card.name===slot.characterName;
+ if(same&&(!slot.persona?.trim()||slot.persona===PLACEHOLDER))slot.persona=card.persona;
+ const profile=['kairos','samuel','generic'].includes(slot.interactionProfile)?slot.interactionProfile:/samuel/i.test(slot.characterName)?'samuel':index===0?'kairos':'generic';
+ slot.interactionProfile=profile;
+ if(!validGreetings(slot.greetingGroups))slot.greetingGroups=structuredClone(same&&validGreetings(card.greetingGroups)?card.greetingGroups:profile==='samuel'?require('./samuel-greetings.cjs'):profile==='kairos'?require('./greetings.cjs').DEFAULT_GREETINGS:{morning:[],midday:[],night:[],random:['我在，Creator。']});
+ return slot;
+}
 function validSlot(value){return Number.isInteger(value)&&value>=0&&value<4;}
 function syncSlot(config){
  const slot=config.characters[config.activeCharacter];
@@ -22,10 +34,10 @@ function migrateCharacters(config,files){
   const legacy=!old.length&&index===legacyIndex;
   const base={characterName:legacy?(config.characterName||'Kairos Asher'):index===0?'Kairos Asher':`角色 ${index+1}`,persona:legacy?config.persona:'请填写这个角色的身份、性格和说话方式。你与 Creator 是平等、熟悉的朋友。',memory:legacy?config.memory:'',summaryCursor:legacy?config.summaryCursor:0,manualExpression:legacy?config.manualExpression:'normal',accessories:{ears:false,scarf:false,sweater:false},greetingGroups:legacy?structuredClone(config.greetingGroups):{morning:[],midday:[],night:[],random:['我在，Creator。']},lastGreetingAt:0,lastConversationAt:0};
   const present=old[index];
-  if(present&&typeof present.characterName==='string'&&typeof present.persona==='string'&&present.persona.trim()&&!(/^角色 [1-4]$/.test(present.characterName)&&present.persona===base.persona))return {...base,...present};
   const card=files?.readCard(index);
-  if(card)return {...base,characterName:card.name,persona:card.persona,interactionProfile:card.interactionProfile,greetingGroups:card.greetingGroups||(/samuel/i.test(card.name)?require('./samuel-greetings.cjs'):base.greetingGroups)};
-  return base;
+  if(present&&typeof present.characterName==='string'&&!(/^角色 [1-4]$/.test(present.characterName)&&present.persona===PLACEHOLDER))return repairSlot({...base,...present,greetingGroups:present.greetingGroups},card,index);
+  if(card)return repairSlot({...base,characterName:card.name,persona:card.persona,interactionProfile:card.interactionProfile,greetingGroups:card.greetingGroups},card,index);
+  return repairSlot(base,null,index);
  });
  for(const [index,slot] of config.characters.entries())if(!['kairos','samuel','generic'].includes(slot.interactionProfile))slot.interactionProfile=/samuel/i.test(slot.characterName)?'samuel':index===0?'kairos':'generic';
  if(!validSlot(config.activeCharacter))config.activeCharacter=0;
@@ -34,7 +46,7 @@ function migrateCharacters(config,files){
 class CharacterFiles {
  constructor(dataDir,bundledRoot){this.root=path.join(dataDir,'character');this.bundledRoot=bundledRoot;fs.mkdirSync(this.root,{recursive:true});}
  folder(index){if(!validSlot(index))throw new Error('角色槽位无效。');return path.join(this.root,`slot-${index+1}`);}
- readCard(index){for(const folder of [this.folder(index),path.join(this.bundledRoot,`slot-${index+1}`)]){try{const card=readJSON(path.join(folder,'character.json'),null);if(card&&typeof card.name==='string'&&typeof card.persona==='string'&&card.persona.trim()&&card.persona.length<=50000)return card;}catch{ /* Retain a damaged manifest for manual recovery, without resetting other cards. */ }}return null;}
+ readCard(index){for(const folder of [this.folder(index),path.join(this.bundledRoot,`slot-${index+1}`)])for(const name of ['character.json','character.previous.json']){try{const card=readJSON(path.join(folder,name),null);if(card&&typeof card.name==='string'&&typeof card.persona==='string'&&card.persona.trim()&&card.persona!==PLACEHOLDER&&card.persona.length<=50000)return card;}catch{ /* Retain damaged files and try the previous snapshot. */ }}return null;}
  asset(index,id){
   if(!ASSET_IDS.includes(id))throw new Error('图片类型无效。');
   for(const file of [path.join(this.folder(index),'assets',id+'.png'),path.join(this.bundledRoot,`slot-${index+1}`,'assets',id+'.png')])if(fs.existsSync(file))return file;
@@ -44,12 +56,12 @@ class CharacterFiles {
  loadHistory(index,legacyFile){const file=this.historyFile(index);if(index===0&&!fs.existsSync(file)&&legacyFile&&fs.existsSync(legacyFile))writeJSON(file,readJSON(legacyFile,[]));return readJSON(file,[]);}
  saveHistory(index,history){writeJSON(this.historyFile(index),history);}
  installImage(index,id,source){if(!ASSET_IDS.includes(id))throw new Error('图片类型无效。');const folder=path.join(this.folder(index),'assets');fs.mkdirSync(folder,{recursive:true});fs.copyFileSync(source,path.join(folder,id+'.png'));}
- saveCard(index,slot){const folder=this.folder(index);fs.mkdirSync(folder,{recursive:true});writeJSON(path.join(folder,'character.json'),{version:1,name:slot.characterName,persona:slot.persona,interactionProfile:slot.interactionProfile});fs.writeFileSync(path.join(folder,'persona.txt'),slot.persona,'utf8');}
+ saveCard(index,slot){const folder=this.folder(index);fs.mkdirSync(folder,{recursive:true});const file=path.join(folder,'character.json'),next=cardDocument(slot);let previous;try{previous=readJSON(file,null);}catch{}if(previous&&JSON.stringify(previous)!==JSON.stringify(next))writeJSON(path.join(folder,'character.previous.json'),previous);writeJSON(file,next);fs.writeFileSync(path.join(folder,'persona.txt'),slot.persona,'utf8');}
  exportCard(index,slot,destination){
   const folder=path.join(destination,`slot-${index+1}-${Date.now()}`);fs.mkdirSync(path.join(folder,'assets'),{recursive:true});
-  writeJSON(path.join(folder,'character.json'),{version:1,name:slot.characterName,persona:slot.persona,interactionProfile:slot.interactionProfile});fs.writeFileSync(path.join(folder,'persona.txt'),slot.persona,'utf8');
+  writeJSON(path.join(folder,'character.json'),cardDocument(slot));fs.writeFileSync(path.join(folder,'persona.txt'),slot.persona,'utf8');
   for(const id of ASSET_IDS){const source=this.asset(index,id);if(source)fs.copyFileSync(source,path.join(folder,'assets',id+'.png'));}
   return folder;
  }
 }
-module.exports={FIELDS,ASSET_IDS,validSlot,syncSlot,activate,migrateCharacters,CharacterFiles};
+module.exports={FIELDS,ASSET_IDS,validSlot,syncSlot,activate,migrateCharacters,CharacterFiles,validGreetings,repairSlot};

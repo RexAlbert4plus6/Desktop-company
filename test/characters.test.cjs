@@ -1,5 +1,17 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const os=require('node:os');const path=require('node:path');
 const {migrateCharacters,syncSlot,activate,CharacterFiles}=require('../app/characters.cjs');
+test('complete persona and supplied greetings survive card export, settings loss and restart',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'samuel-recovery-'));try{
+ const files=new CharacterFiles(dir,path.join(dir,'bundled'));const groups=require('../app/samuel-greetings.cjs');const slot={characterName:'Samuel Valemont',persona:'Complete Samuel biography',interactionProfile:'samuel',greetingGroups:groups};files.saveCard(1,slot);
+ const exported=files.exportCard(1,slot,path.join(dir,'export'));const card=JSON.parse(fs.readFileSync(path.join(exported,'character.json'),'utf8'));assert.deepEqual(card.greetingGroups,groups);
+ const c={activeCharacter:1,characters:[{characterName:'Kairos',persona:'Keep Kairos',greetingGroups:groups},{characterName:'Samuel Valemont',persona:'',memory:'keep memory'}]};migrateCharacters(c,files);assert.equal(c.persona,slot.persona);assert.deepEqual(c.greetingGroups,groups);assert.equal(c.memory,'keep memory');
+ files.saveCard(1,c.characters[1]);const again=JSON.parse(JSON.stringify(c));delete again.characters[1].greetingGroups;migrateCharacters(again,files);assert.deepEqual(again.greetingGroups,groups);assert.equal(again.persona,slot.persona);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('missing greeting fields are repaired independently of a valid persona; custom empties are kept',()=>{
+ const c={activeCharacter:1,characters:[{characterName:'Kairos',persona:'first'},{characterName:'Samuel Valemont',persona:'user edited Samuel',greetingGroups:undefined}]};migrateCharacters(c);assert.equal(c.persona,'user edited Samuel');assert.equal(c.greetingGroups.random.length,9);
+ const empty={morning:[],midday:[],night:[],random:[]};c.characters[1].greetingGroups=empty;migrateCharacters(c);assert.deepEqual(c.greetingGroups,empty);
+});
 test('partial character registration recovers a card without resetting existing slots or memory',()=>{
  const config={activeCharacter:2,characters:[{characterName:'Kairos',persona:'first',memory:'keep first'},null,{characterName:'Custom',persona:'third',memory:'keep third'}],worldbook:'shared'};
  migrateCharacters(config,{readCard:index=>index===1?{name:'Samuel Valemont',persona:'original Samuel',interactionProfile:'samuel'}:null});
